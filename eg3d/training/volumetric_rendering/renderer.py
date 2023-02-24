@@ -278,7 +278,9 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         for b_id in range(batch_size):
             axis_3_thi_smp = axis_3[b_id].repeat(grid_ax1.shape)
             coordinates = [grid_ax1[None, ...], grid_ax2[None, ...], axis_3_thi_smp[None, ...]]
-            random.shuffle(coordinates)
+            if self.training:  # In eval mode we sample pixel with random but constant time label
+                random.shuffle(coordinates)
+
             sample_coordinates += torch.stack(coordinates, axis=3)
 
         sample_coordinates = torch.stack(sample_coordinates, axis=0)\
