@@ -256,30 +256,36 @@ class ImportanceRenderer(torch.nn.Module):
 
 
 class AxisAligndProjectionRenderer(ImportanceRenderer):
-    def __init__(self):
+    def __init__(self, neural_rendering_resolution):
+        self.neural_rendering_resolution = neural_rendering_resolution
         super().__init__()
 
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
-        assert ray_origins is None
-        assert ray_directions is None
+        # assert ray_origins is None  # This will be ignored silently
+        # assert ray_directions is None   # This will be ignored silently
         device = planes.device
         self.plane_axes = self.plane_axes.to(device)
 
-        batch_size, _, _ = 1/0 # get batch size! ray_origins.shape
-        num_coordinates_per_axis = 128  # rendering_options['image_resolution']
+
+        batch_size, _, _, _, _ = planes.shape # get batch size! ray_origins.shape
+        num_coordinates_per_axis = self.neural_rendering_resolution  # rendering_options['image_resolution']
         axis_1 = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         axis_2 = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         axis_3 = torch.rand(batch_size, dtype=torch.float32, device=device) * 2 - 1
         grid_ax1, grid_ax2 = torch.meshgrid(axis_1, axis_2)
 
         sample_coordinates = []
-        for b_id in range(batch_size.item()):
+        for b_id in range(batch_size):
             axis_3_thi_smp = axis_3[b_id].repeat(grid_ax1.shape)
-            sample_coordinates += torch.stack(random.shuffle([axis_1, axis_2, axis_3_thi_smp]), axis=2)
+            coordinates = [grid_ax1[None, ...], grid_ax2[None, ...], axis_3_thi_smp[None, ...]]
+            random.shuffle(coordinates)
+            sample_coordinates += torch.stack(coordinates, axis=3)
 
-        sample_coordinates = torch.stack(sample_coordinates, axis=0)
+        sample_coordinates = torch.stack(sample_coordinates, axis=0)\
+            .reshape((batch_size, num_coordinates_per_axis*num_coordinates_per_axis, 3))
         sample_directions = sample_coordinates * 0
 
         out = self.run_model(planes, decoder, sample_coordinates, sample_directions, rendering_options)
         colors_coarse = out['rgb']
+
         return colors_coarse
