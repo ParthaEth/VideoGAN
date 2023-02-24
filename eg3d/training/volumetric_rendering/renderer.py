@@ -19,6 +19,7 @@ import torch.nn as nn
 
 from training.volumetric_rendering.ray_marcher import MipRayMarcher2
 from training.volumetric_rendering import math_utils
+import random
 
 def generate_planes():
     """
@@ -78,6 +79,7 @@ def sample_from_3dgrid(grid, coordinates):
     N, C, H, W, D = sampled_features.shape
     sampled_features = sampled_features.permute(0, 4, 3, 2, 1).reshape(N, H*W*D, C)
     return sampled_features
+
 
 class ImportanceRenderer(torch.nn.Module):
     def __init__(self):
@@ -251,3 +253,33 @@ class ImportanceRenderer(torch.nn.Module):
 
         samples = bins_g[...,0] + (u-cdf_g[...,0])/denom * (bins_g[...,1]-bins_g[...,0])
         return samples
+
+
+class AxisAligndProjectionRenderer(ImportanceRenderer):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
+        assert ray_origins is None
+        assert ray_directions is None
+        device = planes.device
+        self.plane_axes = self.plane_axes.to(device)
+
+        batch_size, _, _ = 1/0 # get batch size! ray_origins.shape
+        num_coordinates_per_axis = 128  # rendering_options['image_resolution']
+        axis_1 = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
+        axis_2 = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
+        axis_3 = torch.rand(batch_size, dtype=torch.float32, device=device) * 2 - 1
+        grid_ax1, grid_ax2 = torch.meshgrid(axis_1, axis_2)
+
+        sample_coordinates = []
+        for b_id in range(batch_size.item()):
+            axis_3_thi_smp = axis_3[b_id].repeat(grid_ax1.shape)
+            sample_coordinates += torch.stack(random.shuffle([axis_1, axis_2, axis_3_thi_smp]), axis=2)
+
+        sample_coordinates = torch.stack(sample_coordinates, axis=0)
+        sample_directions = sample_coordinates * 0
+
+        out = self.run_model(planes, decoder, sample_coordinates, sample_directions, rendering_options)
+        colors_coarse = out['rgb']
+        return colors_coarse

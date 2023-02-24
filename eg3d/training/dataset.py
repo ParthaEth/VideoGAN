@@ -88,7 +88,8 @@ class Dataset(torch.utils.data.Dataset):
         return self._raw_idx.size
 
     def __getitem__(self, idx):
-        image = self._load_raw_image(self._raw_idx[idx])
+        image = self._load_raw_image(self._raw_idx[idx])[:3, :, :]
+        # print(image.shape)
         assert isinstance(image, np.ndarray)
         assert list(image.shape) == self.image_shape
         assert image.dtype == np.uint8
@@ -184,6 +185,12 @@ class ImageFolderDataset(Dataset):
 
         name = os.path.splitext(os.path.basename(self._path))[0]
         raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0).shape)
+        # import ipdb; ipdb.set_trace()
+        if raw_shape[1] != 3:
+            print(f'\n\n\n\n\n\n\n\n\nWARNING: Generator cannot generate other than 3 color channel. '
+                  f'But we got {raw_shape[1]} color cannels. forcing 3 color channels. This might be an error!!!'
+                  f'\n\n\n\n\n\n\n\n\n')
+            raw_shape[1] = 3
         if resolution is not None and (raw_shape[2] != resolution or raw_shape[3] != resolution):
             raise IOError('Image files do not match the specified resolution')
         super().__init__(name=name, raw_shape=raw_shape, **super_kwargs)
@@ -242,3 +249,12 @@ class ImageFolderDataset(Dataset):
         return labels
 
 #----------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+

@@ -8,7 +8,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-name: eg3d
+name: video_gan
 channels:
   - pytorch
   - nvidia

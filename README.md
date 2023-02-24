@@ -144,8 +144,9 @@ You can train new networks using `train.py`. For example:
 
 ```.bash
 # Train with FFHQ from scratch with raw neural rendering resolution=64, using 8 GPUs.
-python train.py --outdir=~/training-runs --cfg=ffhq --data=~/datasets/FFHQ_512.zip \
-  --gpus=8 --batch=32 --gamma=1 --gen_pose_cond=True
+python train.py --outdir=/is/cluster/fast/pghosh/ouputs/video_gan_runs/ --cfg=ffhq 
+   --data=/is/cluster/fast/pghosh/datasets/celebA-HQ_images/ 
+   --gpus=2 --batch=16 --gamma=1 --gen_pose_cond=False --cond False
 
 # Second stage finetuning of FFHQ to 128 neural rendering resolution (optional).
 python train.py --outdir=~/training-runs --cfg=ffhq --data=~/datasets/FFHQ_512.zip \
