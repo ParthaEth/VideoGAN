@@ -269,15 +269,15 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
 
         batch_size, _, _, _, _ = planes.shape # get batch size! ray_origins.shape
         num_coordinates_per_axis = self.neural_rendering_resolution  # rendering_options['image_resolution']
-        axis_1 = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
-        axis_2 = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
-        axis_3 = torch.rand(batch_size, dtype=torch.float32, device=device) * 2 - 1
-        grid_ax1, grid_ax2 = torch.meshgrid(axis_1, axis_2)
+        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
+        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
+        axis_t = torch.rand(batch_size, dtype=torch.float32, device=device) * 2 - 1
+        grid_x, grid_y = torch.meshgrid(axis_x, axis_y)
 
         sample_coordinates = []
         for b_id in range(batch_size):
-            axis_3_thi_smp = axis_3[b_id].repeat(grid_ax1.shape)
-            coordinates = [grid_ax1[None, ...], grid_ax2[None, ...], axis_3_thi_smp[None, ...]]
+            axis_t_thi_smp = axis_t[b_id].repeat(grid_x.shape)
+            coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_thi_smp[None, ...]]
             if self.training:  # In eval mode we sample pixel with random but constant time label
                 random.shuffle(coordinates)
 
