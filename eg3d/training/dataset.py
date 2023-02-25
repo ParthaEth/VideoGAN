@@ -17,6 +17,7 @@ import PIL.Image
 import json
 import torch
 import dnnlib
+import random
 
 try:
     import pyspng
@@ -164,10 +165,12 @@ class ImageFolderDataset(Dataset):
     def __init__(self,
         path,                   # Path to directory or zip.
         resolution      = None, # Ensure specific resolution, None = highest available.
+        return_video=False,
         **super_kwargs,         # Additional arguments for the Dataset base class.
     ):
         self._path = path
         self._zipfile = None
+        self.return_video = return_video
 
         if os.path.isdir(self._path):
             self._type = 'dir'
@@ -222,16 +225,50 @@ class ImageFolderDataset(Dataset):
     def __getstate__(self):
         return dict(super().__getstate__(), _zipfile=None)
 
+    @staticmethod
+    def _centre_crop_resize(img, new_height, new_width):
+        width, height = img.size  # Get dimensions
+
+        left = (width - new_width) // 2
+        top = (height - new_height) // 2
+        right = (width + new_width) // 2
+        bottom = (height + new_height) // 2
+
+        # Crop the center of the image
+        img = img.crop((left, top, right, bottom))
+        return img.resize((width, height))
+
     def _load_raw_image(self, raw_idx):
         fname = self._image_fnames[raw_idx]
         with self._open_file(fname) as f:
-            if pyspng is not None and self._file_ext(fname) == '.png':
+            if pyspng is not None and self._file_ext(fname) == '.png' and not self.return_video:
                 image = pyspng.load(f.read())
+                image = np.array(image).transpose(2, 0, 1) # HWC => CHW
             else:
-                image = np.array(PIL.Image.open(f))
-        if image.ndim == 2:
-            image = image[:, :, np.newaxis] # HW => HWC
-        image = image.transpose(2, 0, 1) # HWC => CHW
+                image = PIL.Image.open(f).convert('RGB')
+                resolution, _ = image.size
+                if self.return_video:
+                    max_x_zoom = 16
+                    target_resolution = np.linspace(resolution, resolution//max_x_zoom, resolution).astype(int)
+                    video = np.zeros((3, resolution, resolution, resolution), dtype=np.uint8)
+                    for frame_id in range(resolution):
+                        # video := [color, x, y, t]
+                        video[:, :, :, frame_id] = \
+                            np.array(self._centre_crop_resize(image, target_resolution[frame_id],
+                                                              target_resolution[frame_id])).transpose(2, 0, 1) # HWC => CHW
+                    constant_axis = random.choice(['x', 'y', 't'])
+                    cnst_coordinate = np.random.randint(0, resolution, 1)[0]
+                    if constant_axis == 'x':
+                        image = video[:, cnst_coordinate, :, :]
+                    elif constant_axis == 'y':
+                        image = video[:, :, cnst_coordinate, :]
+                    elif constant_axis == 't':
+                        image = video[:, :, :, cnst_coordinate]
+                else:
+                    image = np.array(image).transpose(2, 0, 1)  # HWC => CHW
+        # if image.ndim == 2:
+        #     image = image[:, :, np.newaxis] # HW => HWC
+        # import ipdb; ipdb.set_trace()
         return image
 
     def _load_raw_labels(self):
