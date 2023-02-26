@@ -272,10 +272,10 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         num_coordinates_per_axis = self.neural_rendering_resolution  # rendering_options['image_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
-        # if self.return_video:
-        #     axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device)
-        # else:
-        axis_t = torch.rand(batch_size, dtype=torch.float32, device=device) * 2 - 1
+        if self.return_video:
+            axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device)
+        else:
+            axis_t = torch.rand(batch_size, dtype=torch.float32, device=device) * 2 - 1
         grid_x, grid_y = torch.meshgrid(axis_x, axis_y)
 
         sample_coordinates = []
