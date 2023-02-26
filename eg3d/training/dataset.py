@@ -18,6 +18,7 @@ import json
 import torch
 import dnnlib
 import random
+import time
 
 try:
     import pyspng
@@ -162,6 +163,7 @@ class Dataset(torch.utils.data.Dataset):
 #----------------------------------------------------------------------------
 
 class ImageFolderDataset(Dataset):
+    warning_displayed = 0
     def __init__(self,
         path,                   # Path to directory or zip.
         resolution      = None, # Ensure specific resolution, None = highest available.
@@ -171,6 +173,7 @@ class ImageFolderDataset(Dataset):
         self._path = path
         self._zipfile = None
         self.return_video = return_video
+        max_warnings = 1
 
         if os.path.isdir(self._path):
             self._type = 'dir'
@@ -189,10 +192,11 @@ class ImageFolderDataset(Dataset):
         name = os.path.splitext(os.path.basename(self._path))[0]
         raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0).shape)
         # import ipdb; ipdb.set_trace()
-        if raw_shape[1] != 3:
-            print(f'\n\n\n\n\n\n\n\n\nWARNING: Generator cannot generate other than 3 color channel. '
-                  f'But we got {raw_shape[1]} color cannels. forcing 3 color channels. This might be an error!!!'
-                  f'\n\n\n\n\n\n\n\n\n')
+        if raw_shape[1] != 3 and ImageFolderDataset.warning_displayed <= max_warnings:
+            ImageFolderDataset.warning_displayed += 1
+            print(f'\n\n\n\n\n\n\n\n\nWARNING{self.warning_displayed}: Generator cannot generate other than 3 color '
+                  f'channel. But we got {raw_shape[1]} color cannels. forcing 3 color channels. This might be an '
+                  f'error!!!')
             raw_shape[1] = 3
         if resolution is not None and (raw_shape[2] != resolution or raw_shape[3] != resolution):
             raise IOError('Image files do not match the specified resolution')
@@ -226,17 +230,17 @@ class ImageFolderDataset(Dataset):
         return dict(super().__getstate__(), _zipfile=None)
 
     @staticmethod
-    def _centre_crop_resize(img, new_height, new_width):
+    def _centre_crop_resize(img, crop_height, crop_width, resize_h, resize_w):
         width, height = img.size  # Get dimensions
 
-        left = (width - new_width) // 2
-        top = (height - new_height) // 2
-        right = (width + new_width) // 2
-        bottom = (height + new_height) // 2
+        left = (width - crop_width) // 2
+        top = (height - crop_height) // 2
+        right = (width + crop_width) // 2
+        bottom = (height + crop_height) // 2
 
         # Crop the center of the image
         img = img.crop((left, top, right, bottom))
-        return img.resize((width, height))
+        return img.resize((resize_w, resize_h))
 
     def _load_raw_image(self, raw_idx):
         fname = self._image_fnames[raw_idx]
@@ -250,20 +254,34 @@ class ImageFolderDataset(Dataset):
                 if self.return_video:
                     max_x_zoom = 16
                     target_resolution = np.linspace(resolution, resolution//max_x_zoom, resolution).astype(int)
-                    video = np.zeros((3, resolution, resolution, resolution), dtype=np.uint8)
-                    for frame_id in range(resolution):
-                        # video := [color, x, y, t]
-                        video[:, :, :, frame_id] = \
-                            np.array(self._centre_crop_resize(image, target_resolution[frame_id],
-                                                              target_resolution[frame_id])).transpose(2, 0, 1) # HWC => CHW
+                    # video := color, x, y, t
+                    image = np.array(image).transpose(2, 0, 1)
+                    image = np.pad(image, pad_width=((0, 0), (3, 3), (3, 3)), mode='reflect')
                     constant_axis = random.choice(['x', 'y', 't'])
-                    cnst_coordinate = np.random.randint(0, resolution, 1)[0]
+                    cnst_coordinate = np.random.randint(3, resolution+3, 1)[0]
+                    # import ipdb; ipdb.set_trace()
                     if constant_axis == 'x':
-                        image = video[:, cnst_coordinate, :, :]
+                        video = np.zeros((3, 3, resolution, resolution), dtype=np.uint8)
+                        for frame_id in range(resolution):
+                            video[:, :, :, frame_id] = \
+                                np.array(self._centre_crop_resize(
+                                    PIL.Image.fromarray(image[:, cnst_coordinate-1:cnst_coordinate+2, :].transpose(1, 2, 0)),
+                                    3, target_resolution[frame_id], 3, resolution)).transpose(2, 0, 1)
+                        image = video[:, 1, :, :]
                     elif constant_axis == 'y':
-                        image = video[:, :, cnst_coordinate, :]
+                        video = np.zeros((3, resolution, 3, resolution), dtype=np.uint8)
+                        for frame_id in range(resolution):
+                            video[:, :, :, frame_id] = \
+                                np.array(self._centre_crop_resize(
+                                    PIL.Image.fromarray(image[:, :, cnst_coordinate-1:cnst_coordinate+2].transpose(1, 2, 0)),
+                                    target_resolution[frame_id], 3, resolution, 3)).transpose(2, 0, 1)
+                        image = video[:, :, 1, :]
                     elif constant_axis == 't':
-                        image = video[:, :, :, cnst_coordinate]
+                        image = self._centre_crop_resize(PIL.Image.fromarray(image.transpose(1, 2, 0)),
+                                                         target_resolution[cnst_coordinate - 3],
+                                                         target_resolution[cnst_coordinate - 3],
+                                                         resolution, resolution)
+                        image = np.array(image).transpose(2, 0, 1)  # HWC => CHW
                 else:
                     image = np.array(image).transpose(2, 0, 1)  # HWC => CHW
         # if image.ndim == 2:
