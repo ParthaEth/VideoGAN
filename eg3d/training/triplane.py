@@ -27,6 +27,7 @@ class TriPlaneGenerator(torch.nn.Module):
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
         rendering_kwargs    = {},
         sr_kwargs = {},
+        return_video = False,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -37,7 +38,7 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
         self.neural_rendering_resolution = 64
-        self.renderer = AxisAligndProjectionRenderer(self.neural_rendering_resolution)
+        self.renderer = AxisAligndProjectionRenderer(self.neural_rendering_resolution, return_video)
         self.ray_sampler = RaySampler()
         self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256, img_channels=32*3,
                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)

@@ -256,8 +256,9 @@ class ImportanceRenderer(torch.nn.Module):
 
 
 class AxisAligndProjectionRenderer(ImportanceRenderer):
-    def __init__(self, neural_rendering_resolution):
+    def __init__(self, neural_rendering_resolution, return_video):
         self.neural_rendering_resolution = neural_rendering_resolution
+        self.return_video = return_video
         super().__init__()
 
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
@@ -271,6 +272,9 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         num_coordinates_per_axis = self.neural_rendering_resolution  # rendering_options['image_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
+        # if self.return_video:
+        #     axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device)
+        # else:
         axis_t = torch.rand(batch_size, dtype=torch.float32, device=device) * 2 - 1
         grid_x, grid_y = torch.meshgrid(axis_x, axis_y)
 
@@ -278,7 +282,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         for b_id in range(batch_size):
             axis_t_thi_smp = axis_t[b_id].repeat(grid_x.shape)
             coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_thi_smp[None, ...]]
-            if self.training:  # In eval mode we sample pixel with random but constant time label
+            if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label
                 random.shuffle(coordinates)
 
             sample_coordinates += torch.stack(coordinates, axis=3)
