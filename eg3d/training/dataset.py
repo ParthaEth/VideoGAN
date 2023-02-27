@@ -90,7 +90,8 @@ class Dataset(torch.utils.data.Dataset):
         return self._raw_idx.size
 
     def __getitem__(self, idx):
-        image = self._load_raw_image(self._raw_idx[idx])[:3, :, :]
+        image, lbl_cond = self._load_raw_image(self._raw_idx[idx])
+        image = image[:3, :, :]
         # print(image.shape)
         assert isinstance(image, np.ndarray)
         assert list(image.shape) == self.image_shape
@@ -98,7 +99,9 @@ class Dataset(torch.utils.data.Dataset):
         if self._xflip[idx]:
             assert image.ndim == 3 # CHW
             image = image[:, :, ::-1]
-        return image.copy(), self.get_label(idx)
+        label = self.get_label(idx)
+        label[0:2] = np.array(lbl_cond)
+        return image.copy(), label
 
     def get_label(self, idx):
         label = self._get_raw_labels()[self._raw_idx[idx]]
@@ -174,6 +177,7 @@ class ImageFolderDataset(Dataset):
         self._zipfile = None
         self.return_video = return_video
         max_warnings = 1
+        self.label_dict = {}  # [constant_axis_index, constant_index]
 
         if os.path.isdir(self._path):
             self._type = 'dir'
@@ -190,7 +194,7 @@ class ImageFolderDataset(Dataset):
             raise IOError('No image files found in the specified path')
 
         name = os.path.splitext(os.path.basename(self._path))[0]
-        raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0).shape)
+        raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0)[0].shape)
         # import ipdb; ipdb.set_trace()
         if raw_shape[1] != 3 and ImageFolderDataset.warning_displayed <= max_warnings:
             ImageFolderDataset.warning_displayed += 1
@@ -244,6 +248,7 @@ class ImageFolderDataset(Dataset):
 
     def _load_raw_image(self, raw_idx):
         fname = self._image_fnames[raw_idx]
+        lbl_cond = None
         with self._open_file(fname) as f:
             if pyspng is not None and self._file_ext(fname) == '.png' and not self.return_video:
                 image = pyspng.load(f.read())
@@ -259,8 +264,10 @@ class ImageFolderDataset(Dataset):
                     image = np.pad(image, pad_width=((0, 0), (3, 3), (3, 3)), mode='reflect')
                     constant_axis = random.choice(['x', 'y', 't'])
                     cnst_coordinate = np.random.randint(3, resolution+3, 1)[0]
-                    # import ipdb; ipdb.set_trace()
+                    lbl_cond = [0, cnst_coordinate]
+                    lbl_cond[1] = (cnst_coordinate - 3)/resolution
                     if constant_axis == 'x':
+                        lbl_cond[0] = 0
                         video = np.zeros((3, 3, resolution, resolution), dtype=np.uint8)
                         for frame_id in range(resolution):
                             video[:, :, :, frame_id] = \
@@ -269,6 +276,7 @@ class ImageFolderDataset(Dataset):
                                     3, target_resolution[frame_id], 3, resolution)).transpose(2, 0, 1)
                         image = video[:, 1, :, :]
                     elif constant_axis == 'y':
+                        lbl_cond[0] = 1
                         video = np.zeros((3, resolution, 3, resolution), dtype=np.uint8)
                         for frame_id in range(resolution):
                             video[:, :, :, frame_id] = \
@@ -277,6 +285,7 @@ class ImageFolderDataset(Dataset):
                                     target_resolution[frame_id], 3, resolution, 3)).transpose(2, 0, 1)
                         image = video[:, :, 1, :]
                     elif constant_axis == 't':
+                        lbl_cond[0] = 2
                         image = self._centre_crop_resize(PIL.Image.fromarray(image.transpose(1, 2, 0)),
                                                          target_resolution[cnst_coordinate - 3],
                                                          target_resolution[cnst_coordinate - 3],
@@ -287,7 +296,7 @@ class ImageFolderDataset(Dataset):
         # if image.ndim == 2:
         #     image = image[:, :, np.newaxis] # HW => HWC
         # import ipdb; ipdb.set_trace()
-        return image
+        return image, lbl_cond
 
     def _load_raw_labels(self):
         fname = 'dataset.json'

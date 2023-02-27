@@ -55,9 +55,10 @@ class TriPlaneGenerator(torch.nn.Module):
                 c = torch.zeros_like(c)
         return self.backbone.mapping(z, c * self.rendering_kwargs.get('c_scale', 0), truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
 
-    def synthesis(self, ws, c, neural_rendering_resolution=None, update_emas=False, cache_backbone=False, use_cached_backbone=False, **synthesis_kwargs):
-        cam2world_matrix = c[:, :16].view(-1, 4, 4)
-        intrinsics = c[:, 16:25].view(-1, 3, 3)
+    def synthesis(self, ws, c, neural_rendering_resolution=None, update_emas=False, cache_backbone=False,
+                  use_cached_backbone=False, **synthesis_kwargs):
+        # cam2world_matrix = c[:, :16].view(-1, 4, 4)
+        # intrinsics = c[:, 16:25].view(-1, 3, 3)
 
         if neural_rendering_resolution is None:
             neural_rendering_resolution = self.neural_rendering_resolution
@@ -65,10 +66,10 @@ class TriPlaneGenerator(torch.nn.Module):
             self.neural_rendering_resolution = neural_rendering_resolution
 
         # Create a batch of rays for volume rendering
-        ray_origins, ray_directions = self.ray_sampler(cam2world_matrix, intrinsics, neural_rendering_resolution)
+        # ray_origins, ray_directions = self.ray_sampler(cam2world_matrix, intrinsics, neural_rendering_resolution)
 
         # Create triplanes by running StyleGAN backbone
-        N, M, _ = ray_origins.shape
+        # N, M, _ = ray_origins.shape
         if use_cached_backbone and self._last_planes is not None:
             planes = self._last_planes
         else:
@@ -84,9 +85,11 @@ class TriPlaneGenerator(torch.nn.Module):
         #     self.renderer(planes, self.decoder, ray_origins, ray_directions, self.rendering_kwargs) # channels last
         feature_samples = self.renderer(planes, self.decoder, None, None, self.rendering_kwargs)  # channels last
 
+        print(c[0:2])
+        batch, _, _ = ws.shape
         # Reshape into 'raw' image
         H = W = self.neural_rendering_resolution
-        feature_image = feature_samples.permute(0, 2, 1).reshape(N, feature_samples.shape[-1], H, W).contiguous()
+        feature_image = feature_samples.permute(0, 2, 1).reshape(batch, feature_samples.shape[-1], H, W).contiguous()
         # depth_image = depth_samples.permute(0, 2, 1).reshape(N, 1, H, W)
 
         # Run superresolution to get final image
@@ -113,7 +116,6 @@ class TriPlaneGenerator(torch.nn.Module):
 
     def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, neural_rendering_resolution=None, update_emas=False, cache_backbone=False, use_cached_backbone=False, **synthesis_kwargs):
         # Render a batch of generated images.
-        # import ipdb; ipdb.set_trace()
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         return self.synthesis(ws, c, update_emas=update_emas, neural_rendering_resolution=neural_rendering_resolution, cache_backbone=cache_backbone, use_cached_backbone=use_cached_backbone, **synthesis_kwargs)
 
