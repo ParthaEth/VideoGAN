@@ -3,14 +3,14 @@ import os
 import tqdm
 
 
-src_dir = '/is/cluster/pghosh/data/celebA-HQ_images'
-dest_dir = '/is/cluster/fast/pghosh/datasets/celebA-HQ_images/256X256'
+src_dir = '/is/cluster/fast/scratch/datasets/ffhq/images1024x1024/'
+dest_dir = '/is/cluster/fast/pghosh/datasets/ffhq/256X256'
 dataset_description = os.path.join(dest_dir, 'dataset.json')
 dest_resolution = 256
 
 os.makedirs(dest_dir, exist_ok=True)
 
-max_count = 4000
+max_count = 70000
 curr_count = 0
 file_object = open(dataset_description, 'a')
 file_object.write('{\n')

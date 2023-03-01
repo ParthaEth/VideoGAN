@@ -59,10 +59,13 @@ def sample_from_planes(plane_axes, plane_features, coordinates, mode='bilinear',
     _, M, _ = coordinates.shape
     plane_features = plane_features.view(N*n_planes, C, H, W)
 
-    coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
+    # coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
+    coordinates = box_warp * coordinates # TODO: add specific box bounds
 
     projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
-    output_features = torch.nn.functional.grid_sample(plane_features, projected_coordinates.float(), mode=mode, padding_mode=padding_mode, align_corners=False).permute(0, 3, 2, 1).reshape(N, n_planes, M, C)
+    output_features = torch.nn.functional.grid_sample(
+        plane_features, projected_coordinates.float(), mode=mode, padding_mode=padding_mode,
+        align_corners=False).permute(0, 3, 2, 1).reshape(N, n_planes, M, C)
     return output_features
 
 def sample_from_3dgrid(grid, coordinates):
@@ -266,16 +269,17 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         # assert ray_directions is None   # This will be ignored silently
         device = planes.device
         self.plane_axes = self.plane_axes.to(device)
+        #
 
-
-        batch_size, _, _, _, _ = planes.shape # get batch size! ray_origins.shape
+        batch_size, _, planes_ch, _, _ = planes.shape # get batch size! ray_origins.shape
         num_coordinates_per_axis = self.neural_rendering_resolution  # rendering_options['image_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         if self.return_video:
-            axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device)
-        else:
             axis_t = torch.rand(batch_size, dtype=torch.float32, device=device) * 2 - 1
+        else:
+            axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device)
+
         grid_x, grid_y = torch.meshgrid(axis_x, axis_y)
 
         sample_coordinates = []
@@ -284,14 +288,18 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
             coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_thi_smp[None, ...]]
             if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label
                 random.shuffle(coordinates)
+                print('In render.py. Shuffling the axes')
 
             sample_coordinates += torch.stack(coordinates, axis=3)
 
         sample_coordinates = torch.stack(sample_coordinates, axis=0)\
             .reshape((batch_size, num_coordinates_per_axis*num_coordinates_per_axis, 3))
-        sample_directions = sample_coordinates * 0
+        # sample_coordinates = sample_coordinates + torch.randn_like(sample_coordinates)/100
+        sample_directions = sample_coordinates
 
         out = self.run_model(planes, decoder, sample_coordinates, sample_directions, rendering_options)
-        colors_coarse = out['rgb']
+        # colors_coarse = out['rgb']
+        # import ipdb; ipdb.set_trace()
+        colors_coarse = planes[:, 0, :, :64, :64].permute(0, 2, 3, 1).reshape((batch_size, -1, planes_ch)).contiguous()
 
         return colors_coarse
