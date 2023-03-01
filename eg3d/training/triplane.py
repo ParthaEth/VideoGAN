@@ -144,11 +144,14 @@ class OSGDecoder(torch.nn.Module):
         sampled_features = sampled_features.mean(1)
         x = sampled_features
 
-        N, M, C = x.shape
-        x = x.view(N*M, C)
-
-        x = self.net(x)
-        x = x.view(N, M, -1)
-        rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
-        sigma = x[..., 0:1]
+        # N, M, C = x.shape
+        # x = x.view(N*M, C)
+        #
+        # x = self.net(x)
+        # x = x.view(N, M, -1)
+        # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
+        # rgb = x[..., 1:]
+        rgb = x
+        sigma = x[..., 0:1] * 0
+        # import ipdb; ipdb.set_trace()
         return {'rgb': rgb, 'sigma': sigma}

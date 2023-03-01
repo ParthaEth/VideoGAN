@@ -298,8 +298,8 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         sample_directions = sample_coordinates
 
         out = self.run_model(planes, decoder, sample_coordinates, sample_directions, rendering_options)
-        # colors_coarse = out['rgb']
+        colors_coarse = out['rgb']
         # import ipdb; ipdb.set_trace()
-        colors_coarse = planes[:, 0, :, :64, :64].permute(0, 2, 3, 1).reshape((batch_size, -1, planes_ch)).contiguous()
+        # colors_coarse = planes[:, 0, :, :64, :64].permute(0, 2, 3, 1).reshape((batch_size, -1, planes_ch)).contiguous()
 
         return colors_coarse
