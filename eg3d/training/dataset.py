@@ -19,6 +19,7 @@ import torch
 import dnnlib
 import random
 import time
+from pathlib import Path
 
 try:
     import pyspng
@@ -35,12 +36,18 @@ class Dataset(torch.utils.data.Dataset):
         use_labels  = False,    # Enable conditioning labels? False = label dimension is zero.
         xflip       = False,    # Artificially double the size of the dataset via x-flips. Applied after max_size.
         random_seed = 0,        # Random seed to use when applying max_size.
+        cache_dir = None
     ):
         self._name = name
         self._raw_shape = list(raw_shape)
         self._use_labels = use_labels
         self._raw_labels = None
         self._label_shape = None
+        if cache_dir == 'None':
+            self.cache_dir = None
+        else:
+            self.cache_dir = os.path.join(cache_dir, name)
+            os.makedirs(self.cache_dir, exist_ok=True)
 
         # Apply max_size.
         self._raw_idx = np.arange(self._raw_shape[0], dtype=np.int64)
@@ -90,7 +97,25 @@ class Dataset(torch.utils.data.Dataset):
         return self._raw_idx.size
 
     def __getitem__(self, idx):
-        image = self._load_raw_image(self._raw_idx[idx])[:3, :, :]
+        if self.cache_dir is None:
+            image = self._load_raw_image(self._raw_idx[idx])[:3, :, :]
+        else:
+            file_path = os.path.join(self.cache_dir, f'{str(idx).zfill(9)}.png')
+            if os.path.exists(file_path):
+                # cache hit
+                image = PIL.Image.open(file_path).convert('RGB')
+                image = np.array(image).transpose(2, 0, 1)
+                # print('Cache hit!')
+
+            else:
+                image = self._load_raw_image(self._raw_idx[idx])[:3, :, :]
+                # cache
+                img = PIL.Image.fromarray(image.transpose(1, 2, 0))
+                try:
+                    Path(file_path).touch(exist_ok=False)
+                    img.save(file_path)
+                except FileExistsError:
+                    pass
         # print(image.shape)
         assert isinstance(image, np.ndarray)
         assert list(image.shape) == self.image_shape
