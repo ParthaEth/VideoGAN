@@ -84,6 +84,12 @@ class Dataset(torch.utils.data.Dataset):
     def _load_raw_labels(self): # to be overridden by subclass
         raise NotImplementedError
 
+    def get_from_cached(self, fname):
+        raise NotImplementedError
+
+    def write_to_cache(self, image, fname):
+        raise NotImplementedError
+
     def __getstate__(self):
         return dict(self.__dict__, _raw_labels=None)
 
@@ -97,25 +103,7 @@ class Dataset(torch.utils.data.Dataset):
         return self._raw_idx.size
 
     def __getitem__(self, idx):
-        if self.cache_dir is None:
-            image = self._load_raw_image(self._raw_idx[idx])[:3, :, :]
-        else:
-            file_path = os.path.join(self.cache_dir, f'{str(idx).zfill(9)}.png')
-            if os.path.exists(file_path):
-                # cache hit
-                image = PIL.Image.open(file_path).convert('RGB')
-                image = np.array(image).transpose(2, 0, 1)
-                # print('Cache hit!')
-
-            else:
-                image = self._load_raw_image(self._raw_idx[idx])[:3, :, :]
-                # cache
-                img = PIL.Image.fromarray(image.transpose(1, 2, 0))
-                try:
-                    Path(file_path).touch(exist_ok=False)
-                    img.save(file_path)
-                except FileExistsError:
-                    pass
+        image = self._load_raw_image(self._raw_idx[idx])
         # print(image.shape)
         assert isinstance(image, np.ndarray)
         assert list(image.shape) == self.image_shape
@@ -215,7 +203,7 @@ class ImageFolderDataset(Dataset):
             raise IOError('No image files found in the specified path')
 
         name = os.path.splitext(os.path.basename(self._path))[0]
-        raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0).shape)
+        raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0, skip_cache=True).shape)
         # import ipdb; ipdb.set_trace()
         if raw_shape[1] != 3 and ImageFolderDataset.warning_displayed <= max_warnings:
             ImageFolderDataset.warning_displayed += 1
@@ -267,51 +255,56 @@ class ImageFolderDataset(Dataset):
         img = img.crop((left, top, right, bottom))
         return img.resize((resize_w, resize_h))
 
-    def _load_raw_image(self, raw_idx):
+    def _load_raw_image(self, raw_idx, skip_cache=False):
         fname = self._image_fnames[raw_idx]
-        with self._open_file(fname) as f:
-            if pyspng is not None and self._file_ext(fname) == '.png' and not self.return_video:
-                image = pyspng.load(f.read())
-                image = np.array(image).transpose(2, 0, 1) # HWC => CHW
-            else:
+
+        if skip_cache:
+            with self._open_file(fname) as f:
                 image = PIL.Image.open(f).convert('RGB')
-                resolution, _ = image.size
-                if self.return_video:
-                    max_x_zoom = 16
-                    target_resolution = np.linspace(resolution, resolution//max_x_zoom, resolution).astype(int)
-                    # video := color, x, y, t
+                image = np.array(image).transpose(2, 0, 1)
+        else:
+            image = self.get_from_cached(fname)
+            if image is None:
+                with self._open_file(fname) as f:
+                    image = PIL.Image.open(f).convert('RGB')
+                    self.write_to_cache(image, fname)
                     image = np.array(image).transpose(2, 0, 1)
-                    image = np.pad(image, pad_width=((0, 0), (3, 3), (3, 3)), mode='reflect')
-                    constant_axis = random.choice(['x', 'y', 't'])
-                    cnst_coordinate = np.random.randint(3, resolution+3, 1)[0]
-                    # import ipdb; ipdb.set_trace()
-                    if constant_axis == 'x':
-                        video = np.zeros((3, 3, resolution, resolution), dtype=np.uint8)
-                        for frame_id in range(resolution):
-                            video[:, :, :, frame_id] = \
-                                np.array(self._centre_crop_resize(
-                                    PIL.Image.fromarray(image[:, cnst_coordinate-1:cnst_coordinate+2, :].transpose(1, 2, 0)),
-                                    3, target_resolution[frame_id], 3, resolution)).transpose(2, 0, 1)
-                        image = video[:, 1, :, :]
-                    elif constant_axis == 'y':
-                        video = np.zeros((3, resolution, 3, resolution), dtype=np.uint8)
-                        for frame_id in range(resolution):
-                            video[:, :, :, frame_id] = \
-                                np.array(self._centre_crop_resize(
-                                    PIL.Image.fromarray(image[:, :, cnst_coordinate-1:cnst_coordinate+2].transpose(1, 2, 0)),
-                                    target_resolution[frame_id], 3, resolution, 3)).transpose(2, 0, 1)
-                        image = video[:, :, 1, :]
-                    elif constant_axis == 't':
-                        image = self._centre_crop_resize(PIL.Image.fromarray(image.transpose(1, 2, 0)),
-                                                         target_resolution[cnst_coordinate - 3],
-                                                         target_resolution[cnst_coordinate - 3],
-                                                         resolution, resolution)
-                        image = np.array(image).transpose(2, 0, 1)  # HWC => CHW
-                else:
-                    image = np.array(image).transpose(2, 0, 1)  # HWC => CHW
-        # if image.ndim == 2:
-        #     image = image[:, :, np.newaxis] # HW => HWC
-        # import ipdb; ipdb.set_trace()
+            else:
+                image = np.array(image.convert('RGB')).transpose(2, 0, 1)
+
+        _, resolution, _ = image.shape
+        if self.return_video:
+            max_x_zoom = 16
+            target_resolution = np.linspace(resolution, resolution//max_x_zoom, resolution).astype(int)
+            # video := color, x, y, t
+            # image = np.array(image).transpose(2, 0, 1)
+            image = np.pad(image, pad_width=((0, 0), (3, 3), (3, 3)), mode='reflect')
+            constant_axis = random.choice(['x', 'y', 't'])
+            cnst_coordinate = np.random.randint(3, resolution+3, 1)[0]
+            # import ipdb; ipdb.set_trace()
+            if constant_axis == 'x':
+                video = np.zeros((3, 3, resolution, resolution), dtype=np.uint8)
+                for frame_id in range(resolution):
+                    video[:, :, :, frame_id] = \
+                        np.array(self._centre_crop_resize(
+                            PIL.Image.fromarray(image[:, cnst_coordinate-1:cnst_coordinate+2, :].transpose(1, 2, 0)),
+                            3, target_resolution[frame_id], 3, resolution)).transpose(2, 0, 1)
+                image = video[:, 1, :, :]
+            elif constant_axis == 'y':
+                video = np.zeros((3, resolution, 3, resolution), dtype=np.uint8)
+                for frame_id in range(resolution):
+                    video[:, :, :, frame_id] = \
+                        np.array(self._centre_crop_resize(
+                            PIL.Image.fromarray(image[:, :, cnst_coordinate-1:cnst_coordinate+2].transpose(1, 2, 0)),
+                            target_resolution[frame_id], 3, resolution, 3)).transpose(2, 0, 1)
+                image = video[:, :, 1, :]
+            elif constant_axis == 't':
+                image = self._centre_crop_resize(PIL.Image.fromarray(image.transpose(1, 2, 0)),
+                                                 target_resolution[cnst_coordinate - 3],
+                                                 target_resolution[cnst_coordinate - 3],
+                                                 resolution, resolution)
+                image = np.array(image).transpose(2, 0, 1)  # HWC => CHW
+
         return image
 
     def _load_raw_labels(self):
@@ -328,6 +321,27 @@ class ImageFolderDataset(Dataset):
         labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])
         return labels
 
+    def get_from_cached(self, fname):
+        if self.cache_dir is None:
+            return None
+        else:
+            file_path = os.path.join(self.cache_dir, fname)
+            if os.path.exists(file_path):
+                # cache hit
+                image = PIL.Image.open(file_path)
+                return image
+
+            else:
+                return None
+
+    def write_to_cache(self, image, fname):
+        file_path = os.path.join(self.cache_dir, fname)
+        if self.cache_dir is not None:
+            try:
+                Path(file_path).touch(exist_ok=False)
+                image.save(file_path)
+            except FileExistsError:
+                pass
 #----------------------------------------------------------------------------
 
 
