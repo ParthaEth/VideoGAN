@@ -288,7 +288,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
             coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_thi_smp[None, ...]]
             if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label
                 random.shuffle(coordinates)
-                print('In render.py. Shuffling the axes')
+                # print('In render.py. Shuffling the axes')
 
             sample_coordinates += torch.stack(coordinates, axis=3)
 
