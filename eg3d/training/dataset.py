@@ -103,7 +103,7 @@ class Dataset(torch.utils.data.Dataset):
         return self._raw_idx.size
 
     def __getitem__(self, idx):
-        image = self._load_raw_image(self._raw_idx[idx])
+        image, aug_label = self._load_raw_image(self._raw_idx[idx])
         # print(image.shape)
         assert isinstance(image, np.ndarray)
         assert list(image.shape) == self.image_shape
@@ -111,7 +111,10 @@ class Dataset(torch.utils.data.Dataset):
         if self._xflip[idx]:
             assert image.ndim == 3 # CHW
             image = image[:, :, ::-1]
-        return image.copy(), self.get_label(idx)
+        label = self.get_label(idx)
+        label[0:2] = aug_label
+        # print(label)
+        return image.copy(), label
 
     def get_label(self, idx):
         label = self._get_raw_labels()[self._raw_idx[idx]]
@@ -203,7 +206,7 @@ class ImageFolderDataset(Dataset):
             raise IOError('No image files found in the specified path')
 
         name = os.path.splitext(os.path.basename(self._path))[0]
-        raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0, skip_cache=True).shape)
+        raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0, skip_cache=True)[0].shape)
         # import ipdb; ipdb.set_trace()
         if raw_shape[1] != 3 and ImageFolderDataset.warning_displayed <= max_warnings:
             ImageFolderDataset.warning_displayed += 1
@@ -257,7 +260,7 @@ class ImageFolderDataset(Dataset):
 
     def _load_raw_image(self, raw_idx, skip_cache=False):
         fname = self._image_fnames[raw_idx]
-
+        lbl_cond = [2, 0]
         if skip_cache:
             with self._open_file(fname) as f:
                 image = PIL.Image.open(f).convert('RGB')
@@ -274,14 +277,16 @@ class ImageFolderDataset(Dataset):
 
         _, resolution, _ = image.shape
         if self.return_video:
-            max_x_zoom = 16
-            target_resolution = np.linspace(resolution, resolution//max_x_zoom, resolution).astype(int)
+            max_x_zoom = 1.2
+            target_resolution = np.linspace(resolution, resolution/max_x_zoom, resolution).astype(int)
             # video := color, x, y, t
             # image = np.array(image).transpose(2, 0, 1)
             image = np.pad(image, pad_width=((0, 0), (3, 3), (3, 3)), mode='reflect')
-            constant_axis = random.choice(['x', 'y', 't'])
+            # constant_axis = random.choice(['x', 'y', 't'])
+            constant_axis = 't'
             cnst_coordinate = np.random.randint(3, resolution+3, 1)[0]
             # import ipdb; ipdb.set_trace()
+            lbl_cond = [0, (cnst_coordinate - 3)/resolution]
             if constant_axis == 'x':
                 video = np.zeros((3, 3, resolution, resolution), dtype=np.uint8)
                 for frame_id in range(resolution):
@@ -290,6 +295,7 @@ class ImageFolderDataset(Dataset):
                             PIL.Image.fromarray(image[:, cnst_coordinate-1:cnst_coordinate+2, :].transpose(1, 2, 0)),
                             3, target_resolution[frame_id], 3, resolution)).transpose(2, 0, 1)
                 image = video[:, 1, :, :]
+                lbl_cond[0] = 0
             elif constant_axis == 'y':
                 video = np.zeros((3, resolution, 3, resolution), dtype=np.uint8)
                 for frame_id in range(resolution):
@@ -298,14 +304,16 @@ class ImageFolderDataset(Dataset):
                             PIL.Image.fromarray(image[:, :, cnst_coordinate-1:cnst_coordinate+2].transpose(1, 2, 0)),
                             target_resolution[frame_id], 3, resolution, 3)).transpose(2, 0, 1)
                 image = video[:, :, 1, :]
+                lbl_cond[0] = 1
             elif constant_axis == 't':
                 image = self._centre_crop_resize(PIL.Image.fromarray(image.transpose(1, 2, 0)),
                                                  target_resolution[cnst_coordinate - 3],
                                                  target_resolution[cnst_coordinate - 3],
                                                  resolution, resolution)
                 image = np.array(image).transpose(2, 0, 1)  # HWC => CHW
+                lbl_cond[0] = 2
 
-        return image
+        return image, np.array(lbl_cond)
 
     def _load_raw_labels(self):
         fname = 'dataset.json'
@@ -319,6 +327,9 @@ class ImageFolderDataset(Dataset):
         labels = [labels[fname.replace('\\', '/')] for fname in self._image_fnames]
         labels = np.array(labels)
         labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])
+        if not self.return_video:
+            labels[:, 0] = 2
+            labels[:, 1] = 0
         return labels
 
     def get_from_cached(self, fname):
@@ -335,20 +346,12 @@ class ImageFolderDataset(Dataset):
                 return None
 
     def write_to_cache(self, image, fname):
-        file_path = os.path.join(self.cache_dir, fname)
         if self.cache_dir is not None:
-            try:
-                Path(file_path).touch(exist_ok=False)
-                image.save(file_path)
-            except FileExistsError:
-                pass
+            file_path = os.path.join(self.cache_dir, fname)
+            if self.cache_dir is not None:
+                try:
+                    Path(file_path).touch(exist_ok=False)
+                    image.save(file_path)
+                except FileExistsError:
+                    pass
 #----------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-

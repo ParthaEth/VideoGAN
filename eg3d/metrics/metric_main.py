@@ -91,10 +91,10 @@ def fid50k_full(opts):
     return dict(fid50k_full=fid)
 
 @register_metric
-def fid10k_full(opts):
+def fid10k(opts):
     opts.dataset_kwargs.update(max_size=None, xflip=False)
-    fid = frechet_inception_distance.compute_fid(opts, max_real=None, num_gen=10000)
-    return dict(fid10k_full=fid)
+    fid = frechet_inception_distance.compute_fid(opts, max_real=10_000, num_gen=10_000)
+    return dict(fid10k=fid)
 
 @register_metric
 def kid50k_full(opts):

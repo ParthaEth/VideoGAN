@@ -264,7 +264,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         self.return_video = return_video
         super().__init__()
 
-    def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
+    def forward(self, planes, decoder, condition, ray_directions, rendering_options):
         # assert ray_origins is None  # This will be ignored silently
         # assert ray_directions is None   # This will be ignored silently
         device = planes.device
@@ -275,19 +275,32 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         num_coordinates_per_axis = self.neural_rendering_resolution  # rendering_options['image_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
-        if self.return_video:
-            axis_t = torch.rand(batch_size, dtype=torch.float32, device=device) * 2 - 1
-        else:
-            axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device)
+        # if self.return_video and False:  # Remove hack
+        #     # import ipdb; ipdb.set_trace()
+        #     assert(torch.all(-0.01 <= c[:, 1]) and torch.all(c[:, 1] <= 1.01))
+        #     axis_t = c[:, 1] * 2 - 1
+        #     if not self.training:
+        #         assert (torch.all(c[:, 1] < 0.05) and torch.all(c[:, 1] > -0.05))
+        # else:
+        axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device) - 1
 
         grid_x, grid_y = torch.meshgrid(axis_x, axis_y)
 
         sample_coordinates = []
         for b_id in range(batch_size):
-            axis_t_thi_smp = axis_t[b_id].repeat(grid_x.shape)
-            coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_thi_smp[None, ...]]
-            if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label
-                random.shuffle(coordinates)
+            axis_t_this_smpl = axis_t[b_id].repeat(grid_x.shape)
+
+            # if int(c[0, 0]) == 0 and False:  # remove hack
+            #     coordinates = [axis_t_this_smpl[None, ...], grid_x[None, ...], grid_y[None, ...]]
+            # elif int(c[0, 0]) == 1 and False:  # remove hack
+            #     coordinates = [grid_x[None, ...], axis_t_this_smpl[None, ...], grid_y[None, ...]]
+            # elif int(c[0, 0]) == 2 or True:  # remove hack
+            #     coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_this_smpl[None, ...]]
+            # else:
+            #     raise ValueError(f'Constant axis index must be between 0 and 2 got {int(c[0, 0])}')
+            coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_this_smpl[None, ...]]
+            # if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label
+            #     random.shuffle(coordinates)
                 # print('In render.py. Shuffling the axes')
 
             sample_coordinates += torch.stack(coordinates, axis=3)
