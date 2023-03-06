@@ -113,7 +113,8 @@ class Dataset(torch.utils.data.Dataset):
             image = image[:, :, ::-1]
         label = self.get_label(idx)
         label[0:2] = aug_label
-        # print(label)
+        if int(label[0]) != 2:
+            print(f'label: {label}')
         return image.copy(), label
 
     def get_label(self, idx):
@@ -190,6 +191,7 @@ class ImageFolderDataset(Dataset):
         self._zipfile = None
         self.return_video = return_video
         max_warnings = 1
+        self.axis_dict = {'x': 0, 'y': 1, 't': 2}
 
         if os.path.isdir(self._path):
             self._type = 'dir'
@@ -277,8 +279,10 @@ class ImageFolderDataset(Dataset):
 
         _, resolution, _ = image.shape
         if self.return_video:
-            max_x_zoom = 1.2
-            target_resolution = np.linspace(resolution, resolution/max_x_zoom, resolution).astype(int)
+            max_x_zoom = 4
+            num_resolutions = 2
+            target_resolution = np.round(np.linspace(resolution, resolution/max_x_zoom, num_resolutions)).astype(int)
+            target_resolution = np.repeat(target_resolution, np.ceil(resolution/num_resolutions))[0:resolution]
             # video := color, x, y, t
             # image = np.array(image).transpose(2, 0, 1)
             image = np.pad(image, pad_width=((0, 0), (3, 3), (3, 3)), mode='reflect')
@@ -286,7 +290,7 @@ class ImageFolderDataset(Dataset):
             constant_axis = 't'
             cnst_coordinate = np.random.randint(3, resolution+3, 1)[0]
             # import ipdb; ipdb.set_trace()
-            lbl_cond = [0, (cnst_coordinate - 3)/resolution]
+            lbl_cond = [self.axis_dict[constant_axis], (cnst_coordinate - 3)/resolution]
             if constant_axis == 'x':
                 video = np.zeros((3, 3, resolution, resolution), dtype=np.uint8)
                 for frame_id in range(resolution):
@@ -295,7 +299,6 @@ class ImageFolderDataset(Dataset):
                             PIL.Image.fromarray(image[:, cnst_coordinate-1:cnst_coordinate+2, :].transpose(1, 2, 0)),
                             3, target_resolution[frame_id], 3, resolution)).transpose(2, 0, 1)
                 image = video[:, 1, :, :]
-                lbl_cond[0] = 0
             elif constant_axis == 'y':
                 video = np.zeros((3, resolution, 3, resolution), dtype=np.uint8)
                 for frame_id in range(resolution):
@@ -304,14 +307,12 @@ class ImageFolderDataset(Dataset):
                             PIL.Image.fromarray(image[:, :, cnst_coordinate-1:cnst_coordinate+2].transpose(1, 2, 0)),
                             target_resolution[frame_id], 3, resolution, 3)).transpose(2, 0, 1)
                 image = video[:, :, 1, :]
-                lbl_cond[0] = 1
             elif constant_axis == 't':
                 image = self._centre_crop_resize(PIL.Image.fromarray(image.transpose(1, 2, 0)),
                                                  target_resolution[cnst_coordinate - 3],
                                                  target_resolution[cnst_coordinate - 3],
                                                  resolution, resolution)
                 image = np.array(image).transpose(2, 0, 1)  # HWC => CHW
-                lbl_cond[0] = 2
 
         return image, np.array(lbl_cond)
 
@@ -330,6 +331,14 @@ class ImageFolderDataset(Dataset):
         if not self.return_video:
             labels[:, 0] = 2
             labels[:, 1] = 0
+        else:
+            constant_axis = 't'
+            cnst_coordinate = np.random.randint(0, self.resolution, 1)[0]
+            # import ipdb; ipdb.set_trace()
+            lbl_cond = [self.axis_dict[constant_axis], cnst_coordinate / self.resolution]
+            labels[:, 0] = self.axis_dict[constant_axis]
+            labels[:, 1] = (cnst_coordinate - 3) / self.resolution
+
         return labels
 
     def get_from_cached(self, fname):

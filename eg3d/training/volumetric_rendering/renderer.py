@@ -290,12 +290,15 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         for b_id in range(batch_size):
             axis_t_this_smpl = axis_t[b_id].repeat(grid_x.shape)
 
-            if int(c[0, 0]) == 0:  # remove hack
+            if int(c[b_id, 0]) == 0:
                 coordinates = [axis_t_this_smpl[None, ...], grid_x[None, ...], grid_y[None, ...]]
-            elif int(c[0, 0]) == 1:  # remove hack
+                print(f'problem {c[b_id, 0:2]}')
+            elif int(c[b_id, 0]) == 1:
                 coordinates = [grid_x[None, ...], axis_t_this_smpl[None, ...], grid_y[None, ...]]
-            elif int(c[0, 0]) == 2:  # remove hack
+                print(f'problem {c[b_id, 0:2]}')
+            elif int(c[b_id, 0]) == 2:
                 coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_this_smpl[None, ...]]
+                # print(c[0, 0:2], axis_t_this_smpl[0, 0])
             else:
                 raise ValueError(f'Constant axis index must be between 0 and 2 got {int(c[0, 0])}')
             # if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label
