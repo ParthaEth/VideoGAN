@@ -123,6 +123,8 @@ class Dataset(torch.utils.data.Dataset):
             onehot = np.zeros(self.label_shape, dtype=np.float32)
             onehot[label] = 1
             label = onehot
+        if int(label[0]) != 2:
+            print(f'label: {label}')
         return label.copy()
 
     def get_details(self, idx):
@@ -176,6 +178,12 @@ class Dataset(torch.utils.data.Dataset):
     @property
     def has_onehot_labels(self):
         return self._get_raw_labels().dtype == np.int64
+
+    def worker_init_fn(self, w_id):
+        seed = w_id + int(torch.randint(0, 10_000, (1,)))
+        print(f'dataloader seed set to {seed}')
+        np.random.seed(seed)
+        random.seed(seed)
 
 #----------------------------------------------------------------------------
 
@@ -280,7 +288,7 @@ class ImageFolderDataset(Dataset):
         _, resolution, _ = image.shape
         if self.return_video:
             max_x_zoom = 4
-            num_resolutions = 2
+            num_resolutions = 20
             target_resolution = np.round(np.linspace(resolution, resolution/max_x_zoom, num_resolutions)).astype(int)
             target_resolution = np.repeat(target_resolution, np.ceil(resolution/num_resolutions))[0:resolution]
             # video := color, x, y, t
@@ -333,11 +341,11 @@ class ImageFolderDataset(Dataset):
             labels[:, 1] = 0
         else:
             constant_axis = 't'
-            cnst_coordinate = np.random.randint(0, self.resolution, 1)[0]
+            cnst_coordinate = np.random.randint(0, self.resolution, len(labels))
             # import ipdb; ipdb.set_trace()
             lbl_cond = [self.axis_dict[constant_axis], cnst_coordinate / self.resolution]
             labels[:, 0] = self.axis_dict[constant_axis]
-            labels[:, 1] = (cnst_coordinate - 3) / self.resolution
+            labels[:, 1] = cnst_coordinate / self.resolution
 
         return labels
 
