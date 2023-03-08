@@ -22,10 +22,27 @@ import dnnlib
 
 #----------------------------------------------------------------------------
 
-class MetricOptions:
-    def __init__(self, G=None, G_kwargs={}, dataset_kwargs={}, num_gpus=1, rank=0, device=None, progress=None, cache=True):
+
+class MetricOptionsBase:
+    def __init__(self):
+        pass
+
+
+class MetricOptions(MetricOptionsBase):
+    def __init__(self, G=None, G_kwargs={}, dataset_kwargs={}, num_gpus=1, rank=0, device=None, progress=None,
+                 cache=True):
+        # if G is none G_kwargs doubles as the second dataset's kw args
+        super().__init__()
         assert 0 <= rank < num_gpus
         self.G              = G
+        if self.G is None:
+            self.generated_dir = MetricOptionsBase()
+            self.generated_dir.dataset_kwargs = dnnlib.EasyDict(G_kwargs)
+            self.generated_dir.num_gpus       = num_gpus
+            self.generated_dir.rank           = rank
+            self.generated_dir.device         = device if device is not None else torch.device('cuda', rank)
+            self.generated_dir.progress       = progress.sub() if progress is not None and rank == 0 else ProgressMonitor()
+            self.generated_dir.cache          = False
         self.G_kwargs       = dnnlib.EasyDict(G_kwargs)
         self.dataset_kwargs = dnnlib.EasyDict(dataset_kwargs)
         self.num_gpus       = num_gpus
@@ -278,4 +295,4 @@ def compute_feature_stats_for_generator(opts, detector_url, detector_kwargs, rel
         progress.update(stats.num_items)
     return stats
 
-#----------------------------------------------------------------------------
+#-----------------------------------------------------------------------------

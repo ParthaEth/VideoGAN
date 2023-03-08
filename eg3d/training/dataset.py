@@ -43,7 +43,7 @@ class Dataset(torch.utils.data.Dataset):
         self._use_labels = use_labels
         self._raw_labels = None
         self._label_shape = None
-        if cache_dir == 'None':
+        if cache_dir is None or cache_dir == 'None':
             self.cache_dir = None
         else:
             self.cache_dir = os.path.join(cache_dir, name)
@@ -112,9 +112,10 @@ class Dataset(torch.utils.data.Dataset):
             assert image.ndim == 3 # CHW
             image = image[:, :, ::-1]
         label = self.get_label(idx)
-        label[0:2] = aug_label
-        if int(label[0]) != 2:
-            print(f'label: {label}')
+        if len(label) > 0:
+            label[0:2] = aug_label
+            if int(label[0]) != 2:
+                print(f'label: {label}')
         return image.copy(), label
 
     def get_label(self, idx):
@@ -123,7 +124,7 @@ class Dataset(torch.utils.data.Dataset):
             onehot = np.zeros(self.label_shape, dtype=np.float32)
             onehot[label] = 1
             label = onehot
-        if int(label[0]) != 2:
+        if len(label) > 0 and int(label[0]) != 2:
             print(f'label: {label}')
         return label.copy()
 
