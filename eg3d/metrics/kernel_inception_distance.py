@@ -26,9 +26,14 @@ def compute_kid(opts, max_real, num_gen, num_subsets, max_subset_size):
         opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
         rel_lo=0, rel_hi=0, capture_all=True, max_items=max_real).get_all()
 
-    gen_features = metric_utils.compute_feature_stats_for_generator(
-        opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
-        rel_lo=0, rel_hi=1, capture_all=True, max_items=num_gen).get_all()
+    if opts.G is None:
+        gen_features = metric_utils.compute_feature_stats_for_dataset(
+            opts=opts.generated_dir, detector_url=detector_url, detector_kwargs=detector_kwargs,
+            rel_lo=0, rel_hi=0, capture_all=True, max_items=max_real).get_all()
+    else:
+        gen_features = metric_utils.compute_feature_stats_for_generator(
+            opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
+            rel_lo=0, rel_hi=1, capture_all=True, max_items=num_gen).get_all()
 
     if opts.rank != 0:
         return float('nan')
