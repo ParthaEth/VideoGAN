@@ -293,10 +293,10 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
 
             if int(c[b_id, 0]) == 0:
                 coordinates = [axis_t_this_smpl[None, ...], grid_x[None, ...], grid_y[None, ...]]
-                print(f'problem {c[b_id, 0:2]}')
+                # print(f'problem {c[b_id, 0:2]}')
             elif int(c[b_id, 0]) == 1:
                 coordinates = [grid_x[None, ...], axis_t_this_smpl[None, ...], grid_y[None, ...]]
-                print(f'problem {c[b_id, 0:2]}')
+                # print(f'problem {c[b_id, 0:2]}')
             elif int(c[b_id, 0]) == 2:
                 coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_this_smpl[None, ...]]
                 # print(c[0, 0:2], axis_t_this_smpl[0, 0])

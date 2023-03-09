@@ -20,6 +20,8 @@ import dnnlib
 import random
 import time
 from pathlib import Path
+import shutil
+
 
 try:
     import pyspng
@@ -36,8 +38,10 @@ class Dataset(torch.utils.data.Dataset):
         use_labels  = False,    # Enable conditioning labels? False = label dimension is zero.
         xflip       = False,    # Artificially double the size of the dataset via x-flips. Applied after max_size.
         random_seed = 0,        # Random seed to use when applying max_size.
-        cache_dir = None
+        cache_dir = None,
+        fixed_time_frames = False
     ):
+        self.fixed_time_frames = fixed_time_frames
         self._name = name
         self._raw_shape = list(raw_shape)
         self._use_labels = use_labels
@@ -114,8 +118,8 @@ class Dataset(torch.utils.data.Dataset):
         label = self.get_label(idx)
         if len(label) > 0:
             label[0:2] = aug_label
-            if int(label[0]) != 2:
-                print(f'label: {label}')
+            # if int(label[0]) != 2:
+            #     print(f'label: {label}')
         return image.copy(), label
 
     def get_label(self, idx):
@@ -124,8 +128,8 @@ class Dataset(torch.utils.data.Dataset):
             onehot = np.zeros(self.label_shape, dtype=np.float32)
             onehot[label] = 1
             label = onehot
-        if len(label) > 0 and int(label[0]) != 2:
-            print(f'label: {label}')
+        # if len(label) > 0 and int(label[0]) != 2:
+        #     print(f'label: {label}')
         return label.copy()
 
     def get_details(self, idx):
@@ -280,23 +284,24 @@ class ImageFolderDataset(Dataset):
             image = self.get_from_cached(fname)
             if image is None:
                 with self._open_file(fname) as f:
-                    image = PIL.Image.open(f).convert('RGB')
-                    self.write_to_cache(image, fname)
-                    image = np.array(image).transpose(2, 0, 1)
-            else:
-                image = np.array(image.convert('RGB')).transpose(2, 0, 1)
+                    self.write_to_cache(fname)
+                    image = self.get_from_cached(fname)
+            # else:
+            #     image = np.array(image.convert('RGB')).transpose(2, 0, 1)
 
         _, resolution, _ = image.shape
         if self.return_video:
             max_x_zoom = 4
-            num_resolutions = 1
+            num_resolutions = 20
             target_resolution = np.round(np.linspace(resolution, resolution/max_x_zoom, num_resolutions)).astype(int)
             target_resolution = np.repeat(target_resolution, np.ceil(resolution/num_resolutions))[0:resolution]
             # video := color, x, y, t
             # image = np.array(image).transpose(2, 0, 1)
             image = np.pad(image, pad_width=((0, 0), (3, 3), (3, 3)), mode='reflect')
-            # constant_axis = random.choice(['x', 'y', 't'])
-            constant_axis = 't'
+            if getattr(self, 'fixed_time_frames', True):
+                constant_axis = 't'
+            else:
+                constant_axis = random.choice(['x', 'y', 't'])
             cnst_coordinate = np.random.randint(3, resolution+3, 1)[0]
             # import ipdb; ipdb.set_trace()
             lbl_cond = [self.axis_dict[constant_axis], (cnst_coordinate - 3)/resolution]
@@ -341,7 +346,10 @@ class ImageFolderDataset(Dataset):
             labels[:, 0] = 2
             labels[:, 1] = 0
         else:
-            constant_axis = 't'
+            if self.fixed_time_frames:
+                constant_axis = 't'
+            else:
+                constant_axis = random.choice(['x', 'y', 't'])
             cnst_coordinate = np.random.randint(0, self.resolution, len(labels))
             # import ipdb; ipdb.set_trace()
             lbl_cond = [self.axis_dict[constant_axis], cnst_coordinate / self.resolution]
@@ -357,19 +365,24 @@ class ImageFolderDataset(Dataset):
             file_path = os.path.join(self.cache_dir, fname)
             if os.path.exists(file_path):
                 # cache hit
-                image = PIL.Image.open(file_path)
+                try:
+                    image = PIL.Image.open(file_path)
+                    image = np.array(image.convert('RGB')).transpose(2, 0, 1)
+                except OSError:
+                    return None
                 return image
 
             else:
                 return None
 
-    def write_to_cache(self, image, fname):
+    def write_to_cache(self, fname):
         if self.cache_dir is not None:
-            file_path = os.path.join(self.cache_dir, fname)
+            dest_file_path = os.path.join(self.cache_dir, fname)
             if self.cache_dir is not None:
                 try:
-                    Path(file_path).touch(exist_ok=False)
-                    image.save(file_path)
+                    Path(dest_file_path).touch(exist_ok=False)
+                    src_path = os.path.join(self._path, fname)
+                    shutil.copyfile(src_path, dest_file_path)
                 except FileExistsError:
                     pass
 #----------------------------------------------------------------------------

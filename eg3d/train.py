@@ -104,10 +104,11 @@ def launch_training(c, desc, outdir, dry_run):
 
 #----------------------------------------------------------------------------
 
-def init_dataset_kwargs(data, return_video, cache_dir):
+def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames):
     try:
         dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.ImageFolderDataset', path=data, use_labels=True,
-                                         max_size=None, xflip=False, return_video=return_video, cache_dir=cache_dir)
+                                         max_size=None, xflip=False, return_video=return_video, cache_dir=cache_dir,
+                                         fixed_time_frames=fixed_time_frames)
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # Subclass of training.dataset.Dataset.
         dataset_kwargs.resolution = dataset_obj.resolution # Be explicit about resolution.
         dataset_kwargs.use_labels = dataset_obj.has_labels # Be explicit about labels.
@@ -195,7 +196,8 @@ def parse_comma_separated_list(s):
 @click.option('--d_set_cache_dir', help='Cache directory for the dataset. e.g. a local drive /tmp dir ', metavar='STR', type=str, required=False, default='None')
 @click.option('--decoder_lr_mul',    help='decoder learning rate multiplier.', metavar='FLOAT', type=click.FloatRange(min=0), default=1, required=False, show_default=True)
 @click.option('--return_video',    help='Every image will be zoomed to make video', metavar='BOOL', type=bool, required=False, default=False)
-
+@click.option('--fixed_time_frames', help='Take slice of videos always perpendicular to time axis', metavar='BOOL',
+              type=bool, default=False, show_default=True)
 def main(**kwargs):
     """Train a GAN using the techniques described in the paper
     "Alias-Free Generative Adversarial Networks".
@@ -231,8 +233,9 @@ def main(**kwargs):
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, prefetch_factor=2)
 
     # Training set.
-    c.training_set_kwargs, dataset_name = init_dataset_kwargs(data=opts.data, return_video=opts.return_video,
-                                                              cache_dir=opts.d_set_cache_dir)
+    c.training_set_kwargs, dataset_name = init_dataset_kwargs(
+        data=opts.data, return_video=opts.return_video, cache_dir=opts.d_set_cache_dir,
+        fixed_time_frames=opts.fixed_time_frames)
     if opts.cond and not c.training_set_kwargs.use_labels:
         raise click.ClickException('--cond=True requires labels specified in dataset.json')
     c.training_set_kwargs.use_labels = opts.cond
