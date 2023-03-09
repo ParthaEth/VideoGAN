@@ -143,6 +143,7 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose)
 
     # Load network.
     if data_2 is None:
+        args.G_kwargs = {}
         if not dnnlib.util.is_url(network_pkl, allow_file_urls=True) and not os.path.isfile(network_pkl):
             ctx.fail('--network must point to a file or URL')
         if args.verbose:
