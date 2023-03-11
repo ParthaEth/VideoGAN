@@ -278,10 +278,10 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         if self.return_video:  # Remove hack
             # import ipdb; ipdb.set_trace()
-            assert(torch.all(-0.01 <= c[:, 1]) and torch.all(c[:, 1] <= 1.01))
-            axis_t = c[:, 1] * 2 - 1
-            if not self.training:
-                assert (torch.all(c[:, 1] < 0.05) and torch.all(c[:, 1] > -0.05))
+            assert(torch.all(-0.01 <= c[:, 3]) and torch.all(c[:, 3] <= 1.01))
+            axis_t = c[:, 3] * 2 - 1
+            # if not self.training:
+            #     assert (torch.all(c[:, 1] < 0.05) and torch.all(c[:, 1] > -0.05))
         else:
             axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device) - 1
 
@@ -291,15 +291,18 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         for b_id in range(batch_size):
             axis_t_this_smpl = axis_t[b_id].repeat(grid_x.shape)
 
-            if int(c[b_id, 0]) == 0:
+            if torch.argmax(c[b_id, 0:3]) == 0:
                 coordinates = [axis_t_this_smpl[None, ...], grid_x[None, ...], grid_y[None, ...]]
                 # print(f'problem {c[b_id, 0:2]}')
-            elif int(c[b_id, 0]) == 1:
+                # print('x')
+            elif torch.argmax(c[b_id, 0:3]) == 1:
                 coordinates = [grid_x[None, ...], axis_t_this_smpl[None, ...], grid_y[None, ...]]
                 # print(f'problem {c[b_id, 0:2]}')
-            elif int(c[b_id, 0]) == 2:
+                # print('y')
+            elif torch.argmax(c[b_id, 0:3]) == 2:
                 coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_this_smpl[None, ...]]
                 # print(c[0, 0:2], axis_t_this_smpl[0, 0])
+                # print('t')
             else:
                 raise ValueError(f'Constant axis index must be between 0 and 2 got {int(c[0, 0])}')
             # if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label

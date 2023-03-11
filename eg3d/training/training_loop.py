@@ -17,6 +17,7 @@ import json
 import pickle
 import psutil
 import PIL.Image
+from PIL import ImageFont
 import numpy as np
 import torch
 import dnnlib
@@ -29,13 +30,14 @@ import legacy
 from metrics import metric_main
 from camera_utils import LookAtPoseSampler
 from training.crosssection_utils import sample_cross_section
+from PIL import ImageDraw
 
 #----------------------------------------------------------------------------
 
 def setup_snapshot_image_grid(training_set, random_seed=0):
     rnd = np.random.RandomState(random_seed)
-    gw = np.clip(7680 // training_set.image_shape[2], 7, 32)
-    gh = np.clip(4320 // training_set.image_shape[1], 4, 32)
+    gw = np.clip(2560 // training_set.image_shape[2], 7, 32)
+    gh = np.clip(1440 // training_set.image_shape[1], 4, 32)
 
     # No labels => show random subset of training samples.
     if not training_set.has_labels:
@@ -72,7 +74,13 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 
 #----------------------------------------------------------------------------
 
-def save_image_grid(img, fname, drange, grid_size):
+def write_caption_to_image(image, coordinates_hw, captions, font_size):
+    font = ImageFont.truetype(font='/usr/share/fonts/truetype/freefont/FreeMono.ttf',
+                              size=font_size)
+    for i in range(len(captions)):
+        ImageDraw.Draw(image).text(coordinates_hw[i], captions[i], (255, 255, 255), font=font)
+
+def save_image_grid(img, fname, drange, grid_size, labels=None):
     lo, hi = drange
     img = np.asarray(img, dtype=np.float32)
     img = (img - lo) * (255 / (hi - lo))
@@ -86,9 +94,23 @@ def save_image_grid(img, fname, drange, grid_size):
 
     assert C in [1, 3]
     if C == 1:
-        PIL.Image.fromarray(img[:, :, 0], 'L').save(fname)
+        img = PIL.Image.fromarray(img[:, :, 0], 'L')
     if C == 3:
-        PIL.Image.fromarray(img, 'RGB').save(fname)
+        img = PIL.Image.fromarray(img, 'RGB')
+
+    if labels is not None:
+        coordinates_h = np.linspace(0, gh * H, gh + 1)[:gh]
+        coordinates_w = np.linspace(0, gw * W, gw + 1)[:gw]
+        coordinates_gh, coordinates_gw = np.meshgrid(coordinates_h, coordinates_w, indexing='ij')
+        coordinates_hw = np.stack((coordinates_gw.flatten(), coordinates_gh.flatten())).T
+
+        captions = []
+        for label in labels:
+            captions.append(f'{np.argmax(label[0:3])}, {label[3]*10:.1f}')
+        # import ipdb; ipdb.set_trace()
+        write_caption_to_image(img, coordinates_hw, captions, font_size=int((60/256)*H))
+
+    img.save(fname)
 
 #----------------------------------------------------------------------------
 
@@ -230,10 +252,11 @@ def training_loop(
     if rank == 0:
         print('Exporting sample images...')
         grid_size, images, labels = setup_snapshot_image_grid(training_set=training_set)
-        save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0,255], grid_size=grid_size)
+        save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0, 255], grid_size=grid_size, labels=labels)
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
-        labels[:, 0] = 2
-        labels[:, 1] = 0
+        labels[:, 0:3] *= 0
+        labels[:, 2] = 1
+        labels[:, 3] = 0
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
 
     # Initialize logs.
@@ -367,38 +390,19 @@ def training_loop(
         # Save image snapshot.
         if (rank == 0) and (image_snapshot_ticks is not None) and (done or cur_tick % image_snapshot_ticks == 0):
             # import ipdb; ipdb.set_trace()
-            out = [G_ema(z=z, c=c, noise_mode='const') for z, c in zip(grid_z, grid_c)]
+            out = []
+            fake_labels = []
+            for z, c in zip(grid_z, grid_c):
+                out.append(G_ema(z=z, c=c, noise_mode='const'))
+                fake_labels.append(c.cpu().numpy())
+            fake_labels = np.concatenate(fake_labels, axis=0)
             images = torch.cat([o['image'].cpu() for o in out]).numpy()
             images_raw = torch.cat([o['image_raw'].cpu() for o in out]).numpy()
-            # images_depth = -torch.cat([o['image_depth'].cpu() for o in out]).numpy()
-            save_image_grid(images, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}.png'), drange=[-1,1], grid_size=grid_size)
-            save_image_grid(images_raw, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}_raw.png'), drange=[-1,1], grid_size=grid_size)
-            # save_image_grid(images_depth, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}_depth.png'), drange=[images_depth.min(), images_depth.max()], grid_size=grid_size)
 
-            #--------------------
-            # # Log forward-conditioned images
-
-            # forward_cam2world_pose = LookAtPoseSampler.sample(3.14/2, 3.14/2, torch.tensor([0, 0, 0.2], device=device), radius=2.7, device=device)
-            # intrinsics = torch.tensor([[4.2647, 0, 0.5], [0, 4.2647, 0.5], [0, 0, 1]], device=device)
-            # forward_label = torch.cat([forward_cam2world_pose.reshape(-1, 16), intrinsics.reshape(-1, 9)], 1)
-
-            # grid_ws = [G_ema.mapping(z, forward_label.expand(z.shape[0], -1)) for z, c in zip(grid_z, grid_c)]
-            # out = [G_ema.synthesis(ws, c=c, noise_mode='const') for ws, c in zip(grid_ws, grid_c)]
-
-            # images = torch.cat([o['image'].cpu() for o in out]).numpy()
-            # images_raw = torch.cat([o['image_raw'].cpu() for o in out]).numpy()
-            # images_depth = -torch.cat([o['image_depth'].cpu() for o in out]).numpy()
-            # save_image_grid(images, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}_f.png'), drange=[-1,1], grid_size=grid_size)
-            # save_image_grid(images_raw, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}_raw_f.png'), drange=[-1,1], grid_size=grid_size)
-            # save_image_grid(images_depth, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}_depth_f.png'), drange=[images_depth.min(), images_depth.max()], grid_size=grid_size)
-
-            #--------------------
-            # # Log Cross sections
-
-            # grid_ws = [G_ema.mapping(z, c.expand(z.shape[0], -1)) for z, c in zip(grid_z, grid_c)]
-            # out = [sample_cross_section(G_ema, ws, w=G.rendering_kwargs['box_warp']) for ws, c in zip(grid_ws, grid_c)]
-            # crossections = torch.cat([o.cpu() for o in out]).numpy()
-            # save_image_grid(crossections, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}_crossection.png'), drange=[-50,100], grid_size=grid_size)
+            save_image_grid(images, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}.png'), drange=[-1,1],
+                            grid_size=grid_size, labels=fake_labels)
+            save_image_grid(images_raw, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}_raw.png'), drange=[-1,1],
+                            grid_size=grid_size, labels=fake_labels)
 
         # Save network snapshot.
         snapshot_pkl = None

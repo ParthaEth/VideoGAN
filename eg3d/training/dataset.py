@@ -117,7 +117,7 @@ class Dataset(torch.utils.data.Dataset):
             image = image[:, :, ::-1]
         label = self.get_label(idx)
         if len(label) > 0:
-            label[0:2] = aug_label
+            label[0:4] = aug_label
             # if int(label[0]) != 2:
             #     print(f'label: {label}')
         return image.copy(), label
@@ -186,7 +186,7 @@ class Dataset(torch.utils.data.Dataset):
 
     def worker_init_fn(self, w_id):
         seed = w_id + int(torch.randint(0, 10_000, (1,)))
-        print(f'dataloader seed set to {seed}')
+        # print(f'dataloader seed set to {seed}')
         np.random.seed(seed)
         random.seed(seed)
 
@@ -204,7 +204,7 @@ class ImageFolderDataset(Dataset):
         self._zipfile = None
         self.return_video = return_video
         max_warnings = 1
-        self.axis_dict = {'x': 0, 'y': 1, 't': 2}
+        self.axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
 
         if os.path.isdir(self._path):
             self._type = 'dir'
@@ -275,7 +275,7 @@ class ImageFolderDataset(Dataset):
 
     def _load_raw_image(self, raw_idx, skip_cache=False):
         fname = self._image_fnames[raw_idx]
-        lbl_cond = [2, 0]
+        lbl_cond = [0, 0, 1, 0]
         if skip_cache:
             with self._open_file(fname) as f:
                 image = PIL.Image.open(f).convert('RGB')
@@ -283,9 +283,9 @@ class ImageFolderDataset(Dataset):
         else:
             image = self.get_from_cached(fname)
             if image is None:
-                with self._open_file(fname) as f:
-                    self.write_to_cache(fname)
-                    image = self.get_from_cached(fname)
+                # print(f'Cache miss! {fname}')
+                self.write_to_cache(fname)
+                image = self.get_from_cached(fname)
             # else:
             #     image = np.array(image.convert('RGB')).transpose(2, 0, 1)
 
@@ -304,7 +304,7 @@ class ImageFolderDataset(Dataset):
                 constant_axis = random.choice(['x', 'y', 't'])
             cnst_coordinate = np.random.randint(3, resolution+3, 1)[0]
             # import ipdb; ipdb.set_trace()
-            lbl_cond = [self.axis_dict[constant_axis], (cnst_coordinate - 3)/resolution]
+            lbl_cond = self.axis_dict[constant_axis] + [(cnst_coordinate - 3)/resolution]
             if constant_axis == 'x':
                 video = np.zeros((3, 3, resolution, resolution), dtype=np.uint8)
                 for frame_id in range(resolution):
@@ -341,20 +341,20 @@ class ImageFolderDataset(Dataset):
         labels = dict(labels)
         labels = [labels[fname.replace('\\', '/')] for fname in self._image_fnames]
         labels = np.array(labels)
-        labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])
-        if not self.return_video:
-            labels[:, 0] = 2
-            labels[:, 1] = 0
-        else:
-            if self.fixed_time_frames:
-                constant_axis = 't'
-            else:
-                constant_axis = random.choice(['x', 'y', 't'])
+        labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])[:, :4]
+        if self.return_video:
+            for i in range(len(labels)):
+                if self.fixed_time_frames:
+                    constant_axis = 't'
+                else:
+                    constant_axis = random.choice(['x', 'y', 't'])
+                labels[i, :3] = np.array(self.axis_dict[constant_axis])
             cnst_coordinate = np.random.randint(0, self.resolution, len(labels))
+            labels[:, 3] = cnst_coordinate / self.resolution
             # import ipdb; ipdb.set_trace()
-            lbl_cond = [self.axis_dict[constant_axis], cnst_coordinate / self.resolution]
-            labels[:, 0] = self.axis_dict[constant_axis]
-            labels[:, 1] = cnst_coordinate / self.resolution
+        else:
+            labels[:, 0:3] = np.array([[0, 0, 1], ]).repeat(len(labels), 0)
+            labels[:, 3] = 0
 
         return labels
 
@@ -368,7 +368,9 @@ class ImageFolderDataset(Dataset):
                 try:
                     image = PIL.Image.open(file_path)
                     image = np.array(image.convert('RGB')).transpose(2, 0, 1)
-                except OSError:
+                except OSError as e:
+                    print(f'Bad file {fname}. Removing from cache. \n {e}')
+                    os.remove(file_path)
                     return None
                 return image
 

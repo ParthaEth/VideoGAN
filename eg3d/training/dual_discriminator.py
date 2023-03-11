@@ -156,8 +156,8 @@ class DualDiscriminator(torch.nn.Module):
     def forward(self, img, c, update_emas=False, **block_kwargs):
         # c = c * 0   # Todo(Partha): Tmeporarily removing conditioing from the discriminator. remove this
         cond = c.clone()
-        cond[:, 0] = c[:, 0] - 1
-        # print(c[:, 0])
+        # cond[:, 0] = c[:, 0] - 1
+        # print(c)
         # assert torch.all(c[:, 0] > 0.95) and torch.all(c[:, 0] < 1.05)
         image_raw = filtered_resizing(img['image_raw'], size=img['image'].shape[-1], f=self.resample_filter)
         img = torch.cat([img['image'], image_raw], 1)
