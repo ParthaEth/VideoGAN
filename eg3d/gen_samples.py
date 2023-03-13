@@ -114,6 +114,9 @@ def create_samples(N=256, voxel_origin=[0, 0, 0], cube_length=2.0):
 @click.option('--fov-deg', help='Field of View of camera in degrees', type=int, required=False, metavar='float', default=18.837, show_default=True)
 @click.option('--shape-format', help='Shape Format', type=click.Choice(['.mrc', '.ply']), default='.mrc')
 @click.option('--reload_modules', help='Overload persistent modules?', type=bool, required=False, metavar='BOOL', default=False, show_default=True)
+@click.option('--axis', help='Axis perpendicular to which to take the frames', metavar='STR',
+              type=click.Choice(['x', 'y', 't']), required=False, default='t')
+
 def generate_images(
     network_pkl: str,
     seeds: List[int],
@@ -126,6 +129,7 @@ def generate_images(
     shape_format: str,
     class_idx: Optional[int],
     reload_modules: bool,
+    axis: str,
 ):
     """Generate images using pretrained network pickle.
 
@@ -165,7 +169,15 @@ def generate_images(
         for b_id in range(batches):
 
             conditioning_params = torch.zeros((b_size, G.c_dim), dtype=z.dtype, device=device)
-            conditioning_params[:, 2] = 1
+            if axis == 'x':
+                conditioning_params[:, 0] = 1
+            elif axis == 'y':
+                conditioning_params[:, 1] = 1
+            elif axis == 't':
+                conditioning_params[:, 2] = 1
+            else:
+                raise ValueError(f'Undefined axis: {axis}. Valid options are x, y, or t')
+
             conditioning_params[:, 3] = time_cod[b_id*b_size:b_id*b_size + b_size]
 
             # import ipdb; ipdb.set_trace()

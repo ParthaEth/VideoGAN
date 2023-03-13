@@ -276,7 +276,7 @@ class ImageFolderDataset(Dataset):
     def _load_raw_image(self, raw_idx, skip_cache=False):
         fname = self._image_fnames[raw_idx]
         lbl_cond = [0, 0, 1, 0]
-        if skip_cache:
+        if getattr(self, 'cache_dir', None) is None or skip_cache:
             with self._open_file(fname) as f:
                 image = PIL.Image.open(f).convert('RGB')
                 image = np.array(image).transpose(2, 0, 1)
@@ -292,7 +292,7 @@ class ImageFolderDataset(Dataset):
         _, resolution, _ = image.shape
         if self.return_video:
             max_x_zoom = 4
-            num_resolutions = 20
+            num_resolutions = 2
             target_resolution = np.round(np.linspace(resolution, resolution/max_x_zoom, num_resolutions)).astype(int)
             target_resolution = np.repeat(target_resolution, np.ceil(resolution/num_resolutions))[0:resolution]
             # video := color, x, y, t
