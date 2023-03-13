@@ -276,49 +276,32 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         num_coordinates_per_axis = self.neural_rendering_resolution  # rendering_options['image_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
+        axis_t = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
+
         if self.return_video:  # Remove hack
             # import ipdb; ipdb.set_trace()
             assert(torch.all(-0.01 <= c[:, 3]) and torch.all(c[:, 3] <= 1.01))
-            axis_t = c[:, 3] * 2 - 1
+            # axis_t = c[:, 3] * 2 - 1
             # if not self.training:
             #     assert (torch.all(c[:, 1] < 0.05) and torch.all(c[:, 1] > -0.05))
+            grid_x, grid_y, grid_t = torch.meshgrid(axis_x, axis_y, axis_t, indexing='ij')
+            coordinates = torch.stack([grid_x[None, ...], grid_y[None, ...], grid_t[None, ...]], dim=4)
+            coordinates = coordinates.repeat((batch_size, 1, 1, 1, 1))
         else:
-            axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device) - 1
+            raise NotImplementedError('We have not handled not returning RGBT volume in the downstream')
+            grid_x, grid_y = torch.meshgrid(axis_x, axis_y, indexing='ij')
+            axis_t = torch.zeros(grid_x.shape, dtype=torch.float32, device=device) - 1
+            coordinates = torch.stack([grid_x[None, ...], grid_y[None, ...], axis_t[None, ...]], dim=3)
+            coordinates = coordinates.repeat((batch_size, 1, 1, 1))
 
-        grid_x, grid_y = torch.meshgrid(axis_x, axis_y)
 
-        sample_coordinates = []
-        for b_id in range(batch_size):
-            axis_t_this_smpl = axis_t[b_id].repeat(grid_x.shape)
-
-            if torch.argmax(c[b_id, 0:3]) == 0:
-                coordinates = [axis_t_this_smpl[None, ...], grid_x[None, ...], grid_y[None, ...]]
-                # print(f'problem {c[b_id, 0:2]}')
-                # print('x')
-            elif torch.argmax(c[b_id, 0:3]) == 1:
-                coordinates = [grid_x[None, ...], axis_t_this_smpl[None, ...], grid_y[None, ...]]
-                # print(f'problem {c[b_id, 0:2]}')
-                # print('y')
-            elif torch.argmax(c[b_id, 0:3]) == 2:
-                coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_this_smpl[None, ...]]
-                # print(c[0, 0:2], axis_t_this_smpl[0, 0])
-                # print('t')
-            else:
-                raise ValueError(f'Constant axis index must be between 0 and 2 got {int(c[0, 0])}')
-            # if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label
-            #     random.shuffle(coordinates)
-                # print('In render.py. Shuffling the axes')
-
-            sample_coordinates += torch.stack(coordinates, axis=3)
-
-        sample_coordinates = torch.stack(sample_coordinates, axis=0)\
-            .reshape((batch_size, num_coordinates_per_axis*num_coordinates_per_axis, 3))
+        sample_coordinates = coordinates.reshape((batch_size, -1, 3))
         # sample_coordinates = sample_coordinates + torch.randn_like(sample_coordinates)/100
         sample_directions = sample_coordinates
-
         out = self.run_model(planes, decoder, sample_coordinates, sample_directions, rendering_options)
-        colors_coarse = out['rgb']
+        colors_coarse, flow = out['rgb'], out['flow']
+
         # import ipdb; ipdb.set_trace()
         # colors_coarse = planes[:, 0, :, :64, :64].permute(0, 2, 3, 1).reshape((batch_size, -1, planes_ch)).contiguous()
 
-        return colors_coarse
+        return colors_coarse, flow

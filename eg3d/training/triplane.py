@@ -85,21 +85,58 @@ class TriPlaneGenerator(torch.nn.Module):
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
         #     self.renderer(planes, self.decoder, ray_origins, ray_directions, self.rendering_kwargs) # channels last
-        feature_samples = self.renderer(planes, self.decoder, c, None, self.rendering_kwargs)  # channels last
+        feature_samples, flow = self.renderer(planes, self.decoder, c, None, self.rendering_kwargs)  # channels last
 
         # Reshape into 'raw' image
-        H = W = self.neural_rendering_resolution
-        feature_image = feature_samples.permute(0, 2, 1).reshape(b_size, feature_samples.shape[-1], H, W).contiguous()
-        # depth_image = depth_samples.permute(0, 2, 1).reshape(b_size, 1, H, W)
+        # import ipdb; ipdb.set_trace()
+        H = W = T = self.neural_rendering_resolution
+        feature_samples = feature_samples.permute(0, 2, 1).reshape(b_size, feature_samples.shape[-1], H, W, T).contiguous()
+        diff_rgba_frames = feature_samples[:, :4]
+        flow = flow.permute(0, 2, 1).reshape(b_size, 2, H, W, T).permute(0, 2, 3, 4, 1).contiguous()
+
+        axis_x = torch.linspace(-1.0, 1.0, W, dtype=torch.float32, device=feature_samples.device)
+        axis_y = torch.linspace(-1.0, 1.0, H, dtype=torch.float32, device=feature_samples.device)
+        grid_x, grid_y = torch.meshgrid(axis_x, axis_y, indexing='ij')
+        f_grid = torch.stack([grid_x[None, ...], grid_y[None, ...]], dim=3)
+        f_grid = f_grid.repeat((b_size, 1, 1, 1))
+
+        rgb_vid_vol = [diff_rgba_frames[:, :3, :, :, 0], ]
+        for t in range(1, T):
+            warped = torch.nn.functional.grid_sample(diff_rgba_frames[:, :3, :, :, t-1],  f_grid + flow[:, :, :, t-1, :],
+                                                     align_corners=False)
+            alphas = (diff_rgba_frames[:, 3:4, :, :, t] + 1) / 2
+            current_frame = warped * (1 - alphas) + alphas * diff_rgba_frames[:, :3, :, :, t] * 0  #Todo(Partha remove this temporarily using to remove alpha matting)
+            rgb_vid_vol.append(current_frame)
+
+        # import ipdb; ipdb.set_trace()
+        rgb_vid_vol = torch.stack(rgb_vid_vol, dim=-1)
+
+        rgb_frame = []
+        super_res_features = []
+        # import ipdb; ipdb.set_trace()
+        for b_id in range(b_size):
+            axis_depth = int(c[b_id, 3] * H)
+            if torch.argmax(c[b_id, 0:3]) == 0:
+                rgb_frame.append(rgb_vid_vol[b_id:b_id+1, :3, axis_depth, :, :])
+                super_res_features.append(feature_samples[b_id:b_id+1, :, axis_depth, :, :])
+            elif torch.argmax(c[b_id, 0:3]) == 1:
+                rgb_frame.append(rgb_vid_vol[b_id:b_id+1, :3, :, axis_depth, :])
+                super_res_features.append(feature_samples[b_id:b_id+1, :, :, axis_depth, :])
+            elif torch.argmax(c[b_id, 0:3]) == 2:
+                rgb_frame.append(rgb_vid_vol[b_id:b_id+1, :3, :, :, axis_depth])
+                super_res_features.append(feature_samples[b_id:b_id+1, :, :, :, axis_depth])
+            else:
+                raise ValueError(f'Constant axis index must be between 0 and 2 got {int(c[0, 0])}')
 
         # Run superresolution to get final image
-        rgb_image = feature_image[:, :3]
+        rgb_frame = torch.cat(rgb_frame, dim=0)
+        super_res_features = torch.cat(super_res_features, dim=0)
         sr_image = self.superresolution(
-            rgb_image, feature_image, ws,
+            rgb_frame, super_res_features, ws,
             noise_mode=self.rendering_kwargs['superresolution_noise_mode'],
             **{k:synthesis_kwargs[k] for k in synthesis_kwargs.keys() if k != 'noise_mode'})
 
-        return {'image': sr_image, 'image_raw': rgb_image, 'image_depth': None}
+        return {'image': sr_image, 'image_raw': rgb_frame, 'image_depth': None}
     
     def sample(self, coordinates, directions, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False,
                **synthesis_kwargs):
@@ -137,18 +174,18 @@ class OSGDecoder(torch.nn.Module):
         self.net = torch.nn.Sequential(
             FullyConnectedLayer(n_features * 3, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
             torch.nn.Softplus(),
-            FullyConnectedLayer(self.hidden_dim, 1 + options['decoder_output_dim'], lr_multiplier=options['decoder_lr_mul'])
+            FullyConnectedLayer(self.hidden_dim, 2 + options['decoder_output_dim'], lr_multiplier=options['decoder_lr_mul'])
         )
         
     def forward(self, sampled_features, ray_directions):
         # Aggregate features
         # sampled_features = sampled_features.mean(1)
-        N, planes, M, C = sampled_features.shape
-        x = sampled_features.permute(0, 2, 3, 1).reshape(N*M, C*planes)
+        b_size, planes, num_points, C = sampled_features.shape
+        x = sampled_features.permute(0, 2, 3, 1).reshape(b_size*num_points, C*planes)
         x = self.net(x)
-        x = x.view(N, M, -1)
+        x = x.view(b_size, num_points, -1)
         # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
-        rgb = torch.sigmoid(x[..., 1:]) * 2 - 1
-        sigma = x[..., 0:1] * 0  #Todo(Partha): Do better.
+        rgb = torch.sigmoid(x[..., 2:]) * 2 - 1
+        flow = x[..., 0:2] * 0  #Todo(Partha): Do better.
         # import ipdb; ipdb.set_trace()
-        return {'rgb': rgb, 'sigma': sigma}
+        return {'rgb': rgb, 'flow': flow}
