@@ -163,7 +163,7 @@ def generate_images(
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=60, codec='libx264')
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim,).astype(np.float32)).to(device).repeat(b_size, 1)
-        time_cod = torch.linspace(0, 1, G.img_resolution)
+        time_cod = torch.linspace(0, 0.99, G.img_resolution)
 
         batches = G.img_resolution // b_size
         for b_id in range(batches):
