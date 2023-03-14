@@ -28,14 +28,16 @@ def generate_planes():
     arbitrary orientation.
     """
     return torch.tensor([[[1, 0, 0],
-                            [0, 1, 0],
+                            [0, 1, 0],  #XY
                             [0, 0, 1]],
+
                             [[1, 0, 0],
-                            [0, 0, 1],
+                            [0, 0, 1],  #XT
                             [0, 1, 0]],
-                            [[0, 0, 1],
-                            [1, 0, 0],
-                            [0, 1, 0]]], dtype=torch.float32)
+
+                            [[0, 1, 0],
+                            [0, 0, 1],  # YT
+                            [1, 0, 0]]], dtype=torch.float32)
 
 def project_onto_planes(planes, coordinates):
     """
@@ -63,6 +65,7 @@ def sample_from_planes(plane_axes, plane_features, coordinates, mode='bilinear',
     coordinates = box_warp * coordinates # TODO: add specific box bounds
 
     projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
+    # import ipdb; ipdb.set_trace()
     output_features = torch.nn.functional.grid_sample(
         plane_features, projected_coordinates.float(), mode=mode, padding_mode=padding_mode,
         align_corners=False).permute(0, 3, 2, 1).reshape(N, n_planes, M, C)
@@ -285,7 +288,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         else:
             axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device) - 1
 
-        grid_x, grid_y = torch.meshgrid(axis_x, axis_y)
+        grid_x, grid_y = torch.meshgrid(axis_x, axis_y, indexing='ij')
 
         sample_coordinates = []
         for b_id in range(batch_size):
@@ -294,26 +297,28 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
             if torch.argmax(c[b_id, 0:3]) == 0:
                 coordinates = [axis_t_this_smpl[None, ...], grid_x[None, ...], grid_y[None, ...]]
                 # print(f'problem {c[b_id, 0:2]}')
-                # print('x')
+                # print(f'x: {axis_t}')
             elif torch.argmax(c[b_id, 0:3]) == 1:
                 coordinates = [grid_x[None, ...], axis_t_this_smpl[None, ...], grid_y[None, ...]]
                 # print(f'problem {c[b_id, 0:2]}')
-                # print('y')
+                # print(f'y: {axis_t}')
             elif torch.argmax(c[b_id, 0:3]) == 2:
                 coordinates = [grid_x[None, ...], grid_y[None, ...], axis_t_this_smpl[None, ...]]
                 # print(c[0, 0:2], axis_t_this_smpl[0, 0])
-                # print('t')
+                # print(f't: {axis_t}')
             else:
                 raise ValueError(f'Constant axis index must be between 0 and 2 got {int(c[0, 0])}')
             # if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label
             #     random.shuffle(coordinates)
                 # print('In render.py. Shuffling the axes')
 
-            sample_coordinates += torch.stack(coordinates, axis=3)
+            sample_coordinates += torch.stack(coordinates, dim=3)
 
-        sample_coordinates = torch.stack(sample_coordinates, axis=0)\
+        # import ipdb; ipdb.set_trace()
+        sample_coordinates = torch.stack(sample_coordinates, dim=0)\
             .reshape((batch_size, num_coordinates_per_axis*num_coordinates_per_axis, 3))
         # sample_coordinates = sample_coordinates + torch.randn_like(sample_coordinates)/100
+        # print(f'coord: {sample_coordinates[0, :2, :]}')
         sample_directions = sample_coordinates
 
         out = self.run_model(planes, decoder, sample_coordinates, sample_directions, rendering_options)
