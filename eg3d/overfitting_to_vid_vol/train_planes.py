@@ -15,7 +15,7 @@ from training.dataset import ImageFolderDataset
 
 
 class VidFromImg:
-    def __init__(self, img_path, resolution, max_x_zoom=4, num_resolutions=3):
+    def __init__(self, img_path, resolution, max_x_zoom=4, num_resolutions=20):
         image = PIL.Image.open(img_path).convert('RGB')
         image = image.resize((resolution, resolution))
         self.resolution = resolution
@@ -44,7 +44,8 @@ class VidFromImg:
 
 device = 'cuda'
 plane_h = plane_w = rendering_res = 256
-planes = torch.randn(1, 3, 32, plane_h, plane_w, dtype=torch.float32).to(device)
+plane_c = 128
+planes = torch.randn(1, 3, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)
 planes.requires_grad = True
 renderer = AxisAligndProjectionRenderer(rendering_res, return_video=True).to(device)
 rend_params = [param for param in renderer.parameters()]
@@ -57,7 +58,7 @@ shutil.copyfile(img_file, os.path.join(out_dir, 'original_img.png'))
 
 
 vid_vol = VidFromImg(img_file, rendering_res)
-decoder = OSGDecoder(32, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
+decoder = OSGDecoder(plane_c, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
 dec_params = [param for param in decoder.parameters()]
 
 allparams = [planes, ] + rend_params + dec_params
@@ -71,9 +72,9 @@ for i in pbar:
     cond_batch = []
     gt_img_batch = []
     constant_axis = random.choice(['x', 'y', 't'])
-    constant_axis = 't'
+    # constant_axis = 't'
     cnst_coordinate = np.random.uniform(0, 1, 1)[0]
-    cnst_coordinate = random.choice([0.1, 0.5, 0.9])
+    # cnst_coordinate = random.choice([0.1, 0.5, 0.9])
     # cnst_coordinate = 0.5
     cond = np.array(axis_dict[constant_axis] + [cnst_coordinate, ]).astype(np.float32)
     # print(f'cond:{cond}')
@@ -97,7 +98,7 @@ for i in pbar:
     pbar.set_description(f'loss: {loss.item():0.6f}')
 
     if i % 200 == 0:
-        cond = torch.tensor([[0, 0, 1, 0.9], [0, 0, 1, 0.1]], dtype=torch.float32, device=device)
+        cond = torch.tensor([[0, 0, 1, 0.2], [0, 0, 1, 0.8], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
         feature_samples = renderer(planes.repeat(cond.shape[0], 1, 1, 1, 1), decoder, cond, None,
                                    {'density_noise': 0, 'box_warp': 1})
         # import ipdb; ipdb.set_trace()

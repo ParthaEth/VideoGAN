@@ -137,12 +137,8 @@ class OSGDecoder(torch.nn.Module):
         self.net = torch.nn.Sequential(
             FullyConnectedLayer(n_features * 3, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
             torch.nn.Softplus(),
-            FullyConnectedLayer(self.hidden_dim, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
-            torch.nn.Softplus(),
-            FullyConnectedLayer(self.hidden_dim, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
-            torch.nn.Softplus(),
-            FullyConnectedLayer(self.hidden_dim, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
-            torch.nn.Softplus(),
+            # FullyConnectedLayer(self.hidden_dim, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
+            # torch.nn.Softplus(),
             FullyConnectedLayer(self.hidden_dim, 1 + options['decoder_output_dim'],
                                 lr_multiplier=options['decoder_lr_mul'])
         )
