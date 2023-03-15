@@ -46,7 +46,8 @@ class TriPlaneGenerator(torch.nn.Module):
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
-        self.decoder = OSGDecoder(32, {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1), 'decoder_output_dim': 32})
+        self.decoder = OSGDecoder(32, {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
+                                       'decoder_output_dim': 32, 'rend_res':self.neural_rendering_resolution})
         self.rendering_kwargs = rendering_kwargs
     
         self._last_planes = None
@@ -162,15 +163,16 @@ class OSGDecoder(torch.nn.Module):
     def __init__(self, n_features, options):
         super().__init__()
         self.hidden_dim = 64
+        self.red_res = options['rend_res']
 
         self.net = torch.nn.ModuleList([
             torch.nn.Conv2d(n_features * 3, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #0
             torch.nn.Softplus(),  #1
-            torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #2
-            torch.nn.Softplus(), #3
-            torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #4
-            torch.nn.Softplus(), #5
-            torch.nn.Conv2d(self.hidden_dim, 1 + options['decoder_output_dim'], 3, padding=1, stride=1,
+            # torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #2
+            # torch.nn.Softplus(), #3
+            # torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #4
+            # torch.nn.Softplus(), #5
+            torch.nn.Conv2d(self.hidden_dim, 1 + options['decoder_output_dim'], 1, padding=0, stride=1,
                             padding_mode='reflect')] #6
         )
 
@@ -179,12 +181,12 @@ class OSGDecoder(torch.nn.Module):
         # print(f'feature:{sampled_features[0, :, 100, :4]}')
         # sampled_features = sampled_features.mean(1, keepdim=True)
         N, planes, M, C = sampled_features.shape
-        x = sampled_features.permute(0, 1, 3, 2).reshape(N, C * planes, 256, 256)
+        x = sampled_features.permute(0, 1, 3, 2).reshape(N, C * planes, self.red_res, self.red_res)
         for i, layer in enumerate(self.net):
-            if i == 2:
-                skip = x
-            elif i == len(self.net) - 3:
-                x = x + skip
+            # if i == 2:
+            #     skip = x
+            # elif i == len(self.net) - 3:
+            #     x = x + skip
             x = layer(x)
 
         x = x.view(N, -1, M).permute(0, 2, 1)
