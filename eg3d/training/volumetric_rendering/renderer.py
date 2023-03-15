@@ -55,7 +55,10 @@ def project_onto_planes(planes, coordinates):
     projections = torch.bmm(coordinates, inv_planes)
     return projections[..., :2]
 
-def sample_from_planes(plane_axes, plane_features, coordinates, mode='bilinear', padding_mode='zeros', box_warp=None):
+
+def sample_from_planes(plane_axes, plane_features, coordinates,
+                       mode='bilinear',
+                       padding_mode='zeros', box_warp=None):
     assert padding_mode == 'zeros'
     N, n_planes, C, H, W = plane_features.shape
     _, M, _ = coordinates.shape

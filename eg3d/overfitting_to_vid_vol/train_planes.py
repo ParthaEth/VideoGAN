@@ -43,9 +43,10 @@ class VidFromImg:
 
 
 device = 'cuda'
-plane_h = plane_w = rendering_res = 256
-plane_c = 128
-planes = torch.randn(1, 3, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)
+plane_h = plane_w = 256
+rendering_res = 256
+plane_c = 64
+planes = torch.randn(1, 3, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)*0.01
 planes.requires_grad = True
 renderer = AxisAligndProjectionRenderer(rendering_res, return_video=True).to(device)
 rend_params = [param for param in renderer.parameters()]
@@ -62,29 +63,32 @@ decoder = OSGDecoder(plane_c, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).t
 dec_params = [param for param in decoder.parameters()]
 
 allparams = [planes, ] + rend_params + dec_params
-opt = torch.optim.Adam(allparams, lr=1e-3, betas=(0, 0.5))
+opt = torch.optim.Adam(allparams, lr=2e-3, betas=(0.7, 0.9))
 
 train_itr = 5_000
 criterion = torch.nn.MSELoss()
 axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
 pbar = tqdm.tqdm(range(train_itr))
+losses = []
 for i in pbar:
     cond_batch = []
     gt_img_batch = []
     constant_axis = random.choice(['x', 'y', 't'])
     # constant_axis = 't'
-    cnst_coordinate = np.random.uniform(0, 1, 1)[0]
-    # cnst_coordinate = random.choice([0.1, 0.5, 0.9])
+    # cnst_coordinate = np.random.uniform(0, 1, 1)[0]
+    cnst_coordinate = random.choice(np.linspace(0.01, 0.99, 256))
+    # import ipdb; ipdb.set_trace()
     # cnst_coordinate = 0.5
     cond = np.array(axis_dict[constant_axis] + [cnst_coordinate, ]).astype(np.float32)
     # print(f'cond:{cond}')
     gt_img = torch.from_numpy(vid_vol.get_slice(cond)).to(device)
     cond = torch.from_numpy(cond).to(device)
 
-    feature_samples = renderer(planes, decoder, cond[None, ...], None, {'density_noise': 0, 'box_warp': 1})
+    feature_samples = renderer(planes, decoder, cond[None, ...], None, {'density_noise': 0, 'box_warp': 0.999})
 
     # Reshape into 'raw' image
-    feature_image = feature_samples.permute(0, 2, 1).reshape(1, feature_samples.shape[-1], plane_h, plane_w).contiguous()
+    feature_image = feature_samples.permute(0, 2, 1).reshape(1, feature_samples.shape[-1], rendering_res,
+                                                             rendering_res).contiguous()
     # depth_image = depth_samples.permute(0, 2, 1).reshape(b_size, 1, H, W)
 
     # Run superresolution to get final image
@@ -95,15 +99,16 @@ for i in pbar:
     # import ipdb; ipdb.set_trace()
     opt.step()
     opt.zero_grad()
-    pbar.set_description(f'loss: {loss.item():0.6f}')
+    losses.append(loss.item())
+    pbar.set_description(f'loss: {np.mean(losses[-100:]):0.6f}')
 
     if i % 200 == 0:
-        cond = torch.tensor([[0, 0, 1, 0.2], [0, 0, 1, 0.8], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
+        cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.5], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
         feature_samples = renderer(planes.repeat(cond.shape[0], 1, 1, 1, 1), decoder, cond, None,
-                                   {'density_noise': 0, 'box_warp': 1})
+                                   {'density_noise': 0, 'box_warp': 0.999})
         # import ipdb; ipdb.set_trace()
-        feature_image = feature_samples.permute(0, 2, 1).reshape(cond.shape[0], feature_samples.shape[-1], plane_h,
-                                                                 plane_w).contiguous()
+        feature_image = feature_samples.permute(0, 2, 1).reshape(cond.shape[0], feature_samples.shape[-1],
+                                                                 rendering_res, rendering_res).contiguous()
         rgb_image_to_save = torch.cat((feature_image[:, :3], gt_img), dim=0)
         torchvision.utils.save_image((rgb_image_to_save + 1)/2, os.path.join(out_dir, f'{i:03d}.png'))
 

@@ -129,31 +129,68 @@ class TriPlaneGenerator(torch.nn.Module):
 
 from training.networks_stylegan2 import FullyConnectedLayer
 
+# class OSGDecoder(torch.nn.Module):
+#     def __init__(self, n_features, options):
+#         super().__init__()
+#         self.hidden_dim = 64
+#
+#         self.net = torch.nn.Sequential(
+#             FullyConnectedLayer(n_features * 3, 2*self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
+#             torch.nn.Softplus(),
+#             FullyConnectedLayer(2*self.hidden_dim, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
+#             torch.nn.Softplus(),
+#             FullyConnectedLayer(self.hidden_dim, 1 + options['decoder_output_dim'],
+#                                 lr_multiplier=options['decoder_lr_mul'])
+#         )
+#
+#     def forward(self, sampled_features, ray_directions):
+#         # Aggregate features
+#         # print(f'feature:{sampled_features[0, :, 100, :4]}')
+#         # sampled_features = sampled_features.mean(1, keepdim=True)
+#         N, planes, M, C = sampled_features.shape
+#         x = sampled_features.permute(0, 2, 3, 1).reshape(N*M, C*planes)
+#         x = self.net(x)
+#         x = x.view(N, M, -1)
+#         # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
+#         rgb = torch.sigmoid(x[..., 1:]) * 2 - 1
+#         # rgb = x[..., 1:]
+#         sigma = x[..., 0:1] * 0  #Todo(Partha): Do better.
+#         # import ipdb; ipdb.set_trace()
+#         return {'rgb': rgb, 'sigma': sigma}
+
 class OSGDecoder(torch.nn.Module):
     def __init__(self, n_features, options):
         super().__init__()
         self.hidden_dim = 64
 
-        self.net = torch.nn.Sequential(
-            FullyConnectedLayer(n_features * 3, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
-            torch.nn.Softplus(),
-            # FullyConnectedLayer(self.hidden_dim, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
-            # torch.nn.Softplus(),
-            FullyConnectedLayer(self.hidden_dim, 1 + options['decoder_output_dim'],
-                                lr_multiplier=options['decoder_lr_mul'])
+        self.net = torch.nn.ModuleList([
+            torch.nn.Conv2d(n_features * 3, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #0
+            torch.nn.Softplus(),  #1
+            torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #2
+            torch.nn.Softplus(), #3
+            torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #4
+            torch.nn.Softplus(), #5
+            torch.nn.Conv2d(self.hidden_dim, 1 + options['decoder_output_dim'], 3, padding=1, stride=1,
+                            padding_mode='reflect')] #6
         )
-        
+
     def forward(self, sampled_features, ray_directions):
         # Aggregate features
         # print(f'feature:{sampled_features[0, :, 100, :4]}')
-        # sampled_features = sampled_features.mean(1)
+        # sampled_features = sampled_features.mean(1, keepdim=True)
         N, planes, M, C = sampled_features.shape
-        x = sampled_features.permute(0, 2, 3, 1).reshape(N*M, C*planes)
-        x = self.net(x)
-        x = x.view(N, M, -1)
+        x = sampled_features.permute(0, 1, 3, 2).reshape(N, C * planes, 256, 256)
+        for i, layer in enumerate(self.net):
+            if i == 2:
+                skip = x
+            elif i == len(self.net) - 3:
+                x = x + skip
+            x = layer(x)
+
+        x = x.view(N, -1, M).permute(0, 2, 1)
         # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
         rgb = torch.sigmoid(x[..., 1:]) * 2 - 1
         # rgb = x[..., 1:]
-        sigma = x[..., 0:1] * 0  #Todo(Partha): Do better.
+        sigma = x[..., 0:1] * 0  # Todo(Partha): Do better.
         # import ipdb; ipdb.set_trace()
         return {'rgb': rgb, 'sigma': sigma}
