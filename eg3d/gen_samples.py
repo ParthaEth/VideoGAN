@@ -21,10 +21,11 @@ import PIL.Image
 import torch
 from tqdm import tqdm
 import mrcfile
+import imageio
 
 
 import legacy
-from camera_utils import LookAtPoseSampler, FOV_to_intrinsics
+from camera_utils import LookAtPoseSampler, FOV_to_intrinsics, RotateCamInCirclePerPtoZWhileLookingAt
 from torch_utils import misc
 from training.triplane import TriPlaneGenerator
 
@@ -105,11 +106,11 @@ def create_samples(N=256, voxel_origin=[0, 0, 0], cube_length=2.0):
 @click.command()
 @click.option('--network', 'network_pkl', help='Network pickle filename', required=True)
 @click.option('--seeds', type=parse_range, help='List of random seeds (e.g., \'0,1,4-6\')', required=True)
-@click.option('--trunc', 'truncation_psi', type=float, help='Truncation psi', default=1, show_default=True)
+@click.option('--trunc', 'truncation_psi', type=float, help='Truncation psi', default=0.7, show_default=True)
 @click.option('--trunc-cutoff', 'truncation_cutoff', type=int, help='Truncation cutoff', default=14, show_default=True)
 @click.option('--class', 'class_idx', type=int, help='Class label (unconditional if not specified)')
 @click.option('--outdir', help='Where to save the output images', type=str, required=True, metavar='DIR')
-@click.option('--shapes', help='Export shapes as .mrc files viewable in ChimeraX', type=bool, required=False, metavar='BOOL', default=False, show_default=True)
+@click.option('--shapes', help='Export shapes as .mrc files viewable in ChimeraX', type=bool, required=False, metavar='BOOL', default=False, show_default=False)
 @click.option('--shape-res', help='', type=int, required=False, metavar='int', default=512, show_default=True)
 @click.option('--fov-deg', help='Field of View of camera in degrees', type=int, required=False, metavar='float', default=18.837, show_default=True)
 @click.option('--shape-format', help='Shape Format', type=click.Choice(['.mrc', '.ply']), default='.mrc')
@@ -157,30 +158,45 @@ def generate_images(
     intrinsics = FOV_to_intrinsics(fov_deg, device=device)
 
     # Generate images.
+    circle_radiuous = 0.5
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
+        out_dir_this_seed = os.path.join(outdir, f'seed{seed:04d}')
+        # os.makedirs(out_dir_this_seed, exist_ok=True)
+        video_out = imageio.get_writer(os.path.join(outdir, f'{seed:04d}_rgb.mp4'),
+                                       mode='I', fps=60, codec='libx264')
 
-        imgs = []
+        # imgs = []
         angle_p = -0.2
-        for angle_y, angle_p in [(.4, angle_p), (0, angle_p), (-.4, angle_p)]:
+        # yaw_angles = np.linspace(20/180*np.pi, -20/180*np.pi, 3)
+        rot_angles = np.linspace(0, 2*np.pi, 240)[:-1]
+        for i, rot_angle in enumerate(rot_angles):
             cam_pivot = torch.tensor(G.rendering_kwargs.get('avg_camera_pivot', [0, 0, 0]), device=device)
             cam_radius = G.rendering_kwargs.get('avg_camera_radius', 2.7)
-            cam2world_pose = LookAtPoseSampler.sample(np.pi/2 + angle_y, np.pi/2 + angle_p, cam_pivot, radius=cam_radius, device=device)
-            conditioning_cam2world_pose = LookAtPoseSampler.sample(np.pi/2, np.pi/2, cam_pivot, radius=cam_radius, device=device)
+            # cam2world_pose = LookAtPoseSampler.sample(np.pi/2 + angle_y, np.pi/2 + angle_p, cam_pivot, radius=cam_radius, device=device)
+            cam2world_pose = RotateCamInCirclePerPtoZWhileLookingAt.sample(
+                cam_pivot, z_dist=np.sqrt(cam_radius**2 - circle_radiuous**2), circle_radius=circle_radiuous,
+                rot_angle=rot_angle, device=device)
+            conditioning_cam2world_pose = LookAtPoseSampler.sample(np.pi/2, np.pi/2, cam_pivot, radius=cam_radius,
+                                                                   device=device)
             camera_params = torch.cat([cam2world_pose.reshape(-1, 16), intrinsics.reshape(-1, 9)], 1)
             conditioning_params = torch.cat([conditioning_cam2world_pose.reshape(-1, 16), intrinsics.reshape(-1, 9)], 1)
 
             ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
-            img = G.synthesis(ws, camera_params)['image']
+            synthesized = G.synthesis(ws, camera_params, noise_mode='const')
+            img = synthesized['image']
+
+            # img_depth = -synthesized['image_depth'][0]
+            # img_depth = (img_depth - img_depth.min()) / (img_depth.max() - img_depth.min()) * 2 - 1
 
             img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-            imgs.append(img)
+            # PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(os.path.join(out_dir_this_seed,f'{i:04d}_rgb.png'))
+            video_out.append_data(img[0].cpu().numpy())
 
-        img = torch.cat(imgs, dim=2)
-
-        PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed{seed:04d}.png')
-
+            # img_depth = (img_depth.repeat(3, 1, 1).permute(1, 2, 0) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
+            # PIL.Image.fromarray(img_depth.cpu().numpy(), 'RGB').save(os.path.join(out_dir_this_seed, f'{i:04d}_depth.png'))
+        video_out.close()
         if shapes:
             # extract a shape.mrc with marching cubes. You can view the .mrc file using ChimeraX from UCSF.
             max_batch=1000000
