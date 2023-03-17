@@ -145,6 +145,7 @@ class Conv2dLayer(torch.nn.Module):
         conv_clamp      = None,         # Clamp the output to +-X, None = disable clamping.
         channels_last   = False,        # Expect the input to have memory_format=channels_last?
         trainable       = True,         # Update the weights of this layer during training?
+        lr_multiplier=1,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -155,11 +156,11 @@ class Conv2dLayer(torch.nn.Module):
         self.conv_clamp = conv_clamp
         self.register_buffer('resample_filter', upfirdn2d.setup_filter(resample_filter))
         self.padding = kernel_size // 2
-        self.weight_gain = 1 / np.sqrt(in_channels * (kernel_size ** 2))
+        self.weight_gain = lr_multiplier / np.sqrt(in_channels * (kernel_size ** 2))
         self.act_gain = bias_act.activation_funcs[activation].def_gain
 
         memory_format = torch.channels_last if channels_last else torch.contiguous_format
-        weight = torch.randn([out_channels, in_channels, kernel_size, kernel_size]).to(memory_format=memory_format)
+        weight = (torch.randn([out_channels, in_channels, kernel_size, kernel_size])/lr_multiplier).to(memory_format=memory_format)
         bias = torch.zeros([out_channels]) if bias else None
         if trainable:
             self.weight = torch.nn.Parameter(weight)
@@ -175,7 +176,8 @@ class Conv2dLayer(torch.nn.Module):
         w = self.weight * self.weight_gain
         b = self.bias.to(x.dtype) if self.bias is not None else None
         flip_weight = (self.up == 1) # slightly faster
-        x = conv2d_resample.conv2d_resample(x=x, w=w.to(x.dtype), f=self.resample_filter, up=self.up, down=self.down, padding=self.padding, flip_weight=flip_weight)
+        x = conv2d_resample.conv2d_resample(x=x, w=w.to(x.dtype), f=self.resample_filter, up=self.up, down=self.down,
+                                            padding=self.padding, flip_weight=flip_weight)
 
         act_gain = self.act_gain * gain
         act_clamp = self.conv_clamp * gain if self.conv_clamp is not None else None
@@ -376,6 +378,7 @@ class SynthesisBlock(torch.nn.Module):
         use_fp16                = False,        # Use FP16 for this block?
         fp16_channels_last      = False,        # Use channels-last memory format with FP16?
         fused_modconv_default   = True,         # Default value of fused_modconv. 'inference_only' = True for inference, False for training.
+        up = 2,
         **layer_kwargs,                         # Arguments for SynthesisLayer.
     ):
         assert architecture in ['orig', 'skip', 'resnet']
@@ -392,12 +395,13 @@ class SynthesisBlock(torch.nn.Module):
         self.register_buffer('resample_filter', upfirdn2d.setup_filter(resample_filter))
         self.num_conv = 0
         self.num_torgb = 0
+        self.up = up
 
         if in_channels == 0:
             self.const = torch.nn.Parameter(torch.randn([out_channels, resolution, resolution]))
 
         if in_channels != 0:
-            self.conv0 = SynthesisLayer(in_channels, out_channels, w_dim=w_dim, resolution=resolution, up=2,
+            self.conv0 = SynthesisLayer(in_channels, out_channels, w_dim=w_dim, resolution=resolution, up=up,
                 resample_filter=resample_filter, conv_clamp=conv_clamp, channels_last=self.channels_last, **layer_kwargs)
             self.num_conv += 1
 
@@ -411,7 +415,7 @@ class SynthesisBlock(torch.nn.Module):
             self.num_torgb += 1
 
         if in_channels != 0 and architecture == 'resnet':
-            self.skip = Conv2dLayer(in_channels, out_channels, kernel_size=1, bias=False, up=2,
+            self.skip = Conv2dLayer(in_channels, out_channels, kernel_size=1, bias=False, up=up,
                 resample_filter=resample_filter, channels_last=self.channels_last)
 
     def forward(self, x, img, ws, force_fp32=False, fused_modconv=None, update_emas=False, **layer_kwargs):
@@ -432,7 +436,7 @@ class SynthesisBlock(torch.nn.Module):
             x = self.const.to(dtype=dtype, memory_format=memory_format)
             x = x.unsqueeze(0).repeat([ws.shape[0], 1, 1, 1])
         else:
-            misc.assert_shape(x, [None, self.in_channels, self.resolution // 2, self.resolution // 2])
+            misc.assert_shape(x, [None, self.in_channels, self.resolution // self.up, self.resolution // self.up])
             x = x.to(dtype=dtype, memory_format=memory_format)
 
         # Main layers.
@@ -448,8 +452,8 @@ class SynthesisBlock(torch.nn.Module):
             x = self.conv1(x, next(w_iter), fused_modconv=fused_modconv, **layer_kwargs)
 
         # ToRGB.
-        if img is not None:
-            misc.assert_shape(img, [None, self.img_channels, self.resolution // 2, self.resolution // 2])
+        if img is not None and self.up == 2:
+            misc.assert_shape(img, [None, self.img_channels, self.resolution // self.up, self.resolution // self.up])
             img = upfirdn2d.upsample2d(img, self.resample_filter)
         if self.is_last or self.architecture == 'skip':
             y = self.torgb(x, next(w_iter), fused_modconv=fused_modconv)

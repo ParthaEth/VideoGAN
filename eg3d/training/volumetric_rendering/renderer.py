@@ -150,11 +150,11 @@ class ImportanceRenderer(torch.nn.Module):
 
         return rgb_final, depth_final, weights.sum(2)
 
-    def run_model(self, planes, decoder, sample_coordinates, sample_directions, options):
+    def run_model(self, planes, decoder, sample_coordinates, options):
         sampled_features = sample_from_planes(self.plane_axes, planes, sample_coordinates, padding_mode='zeros',
                                               box_warp=options['box_warp'])
 
-        out = decoder(sampled_features, sample_directions)
+        out = decoder(sampled_features, rendering_res=options['neural_rendering_resolution'])
         if options.get('density_noise', 0) > 0:
             out['sigma'] += torch.randn_like(out['sigma']) * options['density_noise']
         return out
@@ -266,8 +266,8 @@ class ImportanceRenderer(torch.nn.Module):
 
 
 class AxisAligndProjectionRenderer(ImportanceRenderer):
-    def __init__(self, neural_rendering_resolution, return_video):
-        self.neural_rendering_resolution = neural_rendering_resolution
+    def __init__(self, return_video):
+        # self.neural_rendering_resolution = neural_rendering_resolution
         self.return_video = return_video
         super().__init__()
 
@@ -279,7 +279,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         #
 
         batch_size, _, planes_ch, _, _ = planes.shape # get batch size! ray_origins.shape
-        num_coordinates_per_axis = self.neural_rendering_resolution  # rendering_options['image_resolution']
+        num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         if self.return_video:  # Remove hack
@@ -324,7 +324,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         # print(f'coord: {sample_coordinates[0, :2, :]}')
         sample_directions = sample_coordinates
 
-        out = self.run_model(planes, decoder, sample_coordinates, sample_directions, rendering_options)
+        out = self.run_model(planes, decoder, sample_coordinates, rendering_options)
         colors_coarse = out['rgb']
         # import ipdb; ipdb.set_trace()
         # colors_coarse = planes[:, 0, :, :64, :64].permute(0, 2, 3, 1).reshape((batch_size, -1, planes_ch)).contiguous()

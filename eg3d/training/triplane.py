@@ -37,17 +37,18 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_resolution=img_resolution
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
-        self.neural_rendering_resolution = 64
-        self.renderer = AxisAligndProjectionRenderer(self.neural_rendering_resolution, return_video)
+        self.renderer = AxisAligndProjectionRenderer(return_video)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         self.ray_sampler = RaySampler()
-        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256, img_channels=32*3,
+        self.neural_rendering_resolution = 64
+        self.plane_features = 64
+        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256, img_channels=self.plane_features*3,
                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
-        self.decoder = OSGDecoder(32, {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
-                                       'decoder_output_dim': 32, 'rend_res':self.neural_rendering_resolution})
+        self.decoder = OSGDecoder(self.plane_features, {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
+                                       'decoder_output_dim': 32})
         self.rendering_kwargs = rendering_kwargs
     
         self._last_planes = None
@@ -67,6 +68,7 @@ class TriPlaneGenerator(torch.nn.Module):
         else:
             self.neural_rendering_resolution = neural_rendering_resolution
 
+        self.rendering_kwargs['neural_rendering_resolution'] = self.neural_rendering_resolution
         # Create a batch of rays for volume rendering
         # ray_origins, ray_directions = self.ray_sampler(cam2world_matrix, intrinsics, neural_rendering_resolution)
 
@@ -81,7 +83,7 @@ class TriPlaneGenerator(torch.nn.Module):
 
         # Reshape output into three 32-channel planes
         b_size = len(planes)
-        planes = planes.view(b_size, 3, 32, planes.shape[-2], planes.shape[-1])
+        planes = planes.view(b_size, 3, self.plane_features, planes.shape[-2], planes.shape[-1])
 
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
@@ -128,7 +130,7 @@ class TriPlaneGenerator(torch.nn.Module):
                               **synthesis_kwargs)
 
 
-from training.networks_stylegan2 import FullyConnectedLayer
+from training.networks_stylegan2 import Conv2dLayer, SynthesisBlock
 
 # class OSGDecoder(torch.nn.Module):
 #     def __init__(self, n_features, options):
@@ -163,36 +165,41 @@ class OSGDecoder(torch.nn.Module):
     def __init__(self, n_features, options):
         super().__init__()
         self.hidden_dim = 64
-        self.red_res = options['rend_res']
+        # self.rend_res = options['rend_res']
 
         self.net = torch.nn.ModuleList([
-            torch.nn.Conv2d(n_features * 3, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #0
-            torch.nn.Softplus(),  #1
-            # torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #2
-            # torch.nn.Softplus(), #3
-            # torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #4
-            # torch.nn.Softplus(), #5
-            torch.nn.Conv2d(self.hidden_dim, 1 + options['decoder_output_dim'], 1, padding=0, stride=1,
-                            padding_mode='reflect')] #6
+            # Conv2dLayer(n_features * 3, self.hidden_dim, 3, lr_multiplier=options['decoder_lr_mul']), #0
+            # torch.nn.Softplus(),  #1
+            # # torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #2
+            # # torch.nn.Softplus(), #3
+            # # torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #4
+            # # torch.nn.Softplus(), #5
+            # Conv2dLayer(self.hidden_dim, 1 + options['decoder_output_dim'], 1,
+            #             lr_multiplier=options['decoder_lr_mul'])] #6
+            SynthesisBlock(in_channels=n_features * 3,  out_channels=n_features, w_dim=4, resolution=256,
+                           img_channels=3, use_noise=False, is_last=False, up=1),
+            SynthesisBlock(in_channels=n_features, out_channels=1, w_dim=4, resolution=256, img_channels=3,
+                           use_noise=False, is_last=False, up=1)
+        ]
         )
 
-    def forward(self, sampled_features, ray_directions):
+    def forward(self, sampled_features, rendering_res):
         # Aggregate features
         # print(f'feature:{sampled_features[0, :, 100, :4]}')
         # sampled_features = sampled_features.mean(1, keepdim=True)
         N, planes, M, C = sampled_features.shape
-        x = sampled_features.permute(0, 1, 3, 2).reshape(N, C * planes, self.red_res, self.red_res)
+        ws = torch.zeros((N, 3, 4), dtype=sampled_features.dtype, device=sampled_features.device)
+        x = sampled_features.permute(0, 1, 3, 2).reshape(N, C * planes, rendering_res, rendering_res)
+        img = None
         for i, layer in enumerate(self.net):
+            layer.resolution = rendering_res
             # if i == 2:
             #     skip = x
             # elif i == len(self.net) - 3:
             #     x = x + skip
-            x = layer(x)
+            x, img = layer(x, img, ws)
 
-        x = x.view(N, -1, M).permute(0, 2, 1)
-        # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
-        rgb = torch.sigmoid(x[..., 1:]) * 2 - 1
-        # rgb = x[..., 1:]
-        sigma = x[..., 0:1] * 0  # Todo(Partha): Do better.
-        # import ipdb; ipdb.set_trace()
-        return {'rgb': rgb, 'sigma': sigma}
+        img = img.view(N, -1, M).permute(0, 2, 1)
+        # # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
+        # rgb = torch.sigmoid(x[..., 1:]) * 2 - 1
+        return {'rgb': img, 'sigma': None}

@@ -43,12 +43,12 @@ class VidFromImg:
 
 
 device = 'cuda'
-plane_h = plane_w = 256
+plane_h = plane_w = 128
 rendering_res = 256
 plane_c = 64
 planes = torch.randn(1, 3, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)*0.01
 planes.requires_grad = True
-renderer = AxisAligndProjectionRenderer(rendering_res, return_video=True).to(device)
+renderer = AxisAligndProjectionRenderer(return_video=True).to(device)
 rend_params = [param for param in renderer.parameters()]
 
 
@@ -59,11 +59,11 @@ shutil.copyfile(img_file, os.path.join(out_dir, 'original_img.png'))
 
 
 vid_vol = VidFromImg(img_file, rendering_res)
-decoder = OSGDecoder(plane_c, {'decoder_lr_mul': 1, 'decoder_output_dim': 32, 'rend_res':rendering_res}).to(device)
+decoder = OSGDecoder(plane_c, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
 dec_params = [param for param in decoder.parameters()]
 
 allparams = [planes, ] + rend_params + dec_params
-opt = torch.optim.Adam(allparams, lr=2e-3, betas=(0.8, 0.9))
+opt = torch.optim.Adam(allparams, lr=1e-3, betas=(0.5, 0.99))
 
 train_itr = 5_000
 criterion = torch.nn.MSELoss()
@@ -75,8 +75,8 @@ for i in pbar:
     gt_img_batch = []
     constant_axis = random.choice(['x', 'y', 't'])
     # constant_axis = 't'
-    cnst_coordinate = np.random.uniform(0, 1, 1)[0]
-    # cnst_coordinate = random.choice(np.linspace(0.01, 0.99, 256))
+    # cnst_coordinate = np.random.uniform(0, 1, 1)[0]
+    cnst_coordinate = random.choice(np.linspace(0.001, 0.999, rendering_res))
     # import ipdb; ipdb.set_trace()
     # cnst_coordinate = 0.5
     cond = np.array(axis_dict[constant_axis] + [cnst_coordinate, ]).astype(np.float32)
@@ -84,7 +84,8 @@ for i in pbar:
     gt_img = torch.from_numpy(vid_vol.get_slice(cond)).to(device)
     cond = torch.from_numpy(cond).to(device)
 
-    feature_samples = renderer(planes, decoder, cond[None, ...], None, {'density_noise': 0, 'box_warp': 0.999})
+    feature_samples = renderer(planes, decoder, cond[None, ...], None, {'density_noise': 0, 'box_warp': 0.999,
+                                                                        'neural_rendering_resolution': rendering_res})
 
     # Reshape into 'raw' image
     feature_image = feature_samples.permute(0, 2, 1).reshape(1, feature_samples.shape[-1], rendering_res,
@@ -105,7 +106,8 @@ for i in pbar:
     if i % 200 == 0:
         cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.5], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
         feature_samples = renderer(planes.repeat(cond.shape[0], 1, 1, 1, 1), decoder, cond, None,
-                                   {'density_noise': 0, 'box_warp': 0.999})
+                                   {'density_noise': 0, 'box_warp': 0.999,
+                                    'neural_rendering_resolution': rendering_res})
         # import ipdb; ipdb.set_trace()
         feature_image = feature_samples.permute(0, 2, 1).reshape(cond.shape[0], feature_samples.shape[-1],
                                                                  rendering_res, rendering_res).contiguous()
