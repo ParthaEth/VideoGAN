@@ -183,7 +183,7 @@ def generate_images(
             # import ipdb; ipdb.set_trace()
 
             ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
-            img_batch = G.synthesis(ws, conditioning_params)['image']
+            img_batch = G.synthesis(ws, conditioning_params, noise_mode='const')['image']
 
             img_batch = (img_batch.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
             for img in img_batch:
