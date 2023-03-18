@@ -15,7 +15,7 @@ from training.dataset import ImageFolderDataset
 
 
 class VidFromImg:
-    def __init__(self, img_path, resolution, max_x_zoom=4, num_resolutions=20):
+    def __init__(self, img_path, resolution, max_x_zoom=1.7, num_resolutions=20):
         image = PIL.Image.open(img_path).convert('RGB')
         image = image.resize((resolution, resolution))
         self.resolution = resolution
@@ -46,7 +46,7 @@ device = 'cuda'
 plane_h = plane_w = 128
 rendering_res = 256
 plane_c = 64
-planes = torch.randn(1, 3, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)*0.01
+planes = torch.randn(1, 6, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)*0.01
 planes.requires_grad = True
 renderer = AxisAligndProjectionRenderer(return_video=True).to(device)
 rend_params = [param for param in renderer.parameters()]
@@ -77,6 +77,7 @@ for i in pbar:
     # constant_axis = 't'
     # cnst_coordinate = np.random.uniform(0, 1, 1)[0]
     cnst_coordinate = random.choice(np.linspace(0.001, 0.999, rendering_res))
+    # cnst_coordinate = random.choice(np.linspace(0.001, 0.999, 40))
     # import ipdb; ipdb.set_trace()
     # cnst_coordinate = 0.5
     cond = np.array(axis_dict[constant_axis] + [cnst_coordinate, ]).astype(np.float32)
@@ -84,7 +85,7 @@ for i in pbar:
     gt_img = torch.from_numpy(vid_vol.get_slice(cond)).to(device)
     cond = torch.from_numpy(cond).to(device)
 
-    feature_samples = renderer(planes, decoder, cond[None, ...], None, {'density_noise': 0, 'box_warp': 0.999,
+    feature_samples, _ = renderer(planes, decoder, cond[None, ...], None, {'density_noise': 0, 'box_warp': 0.999,
                                                                         'neural_rendering_resolution': rendering_res})
 
     # Reshape into 'raw' image
@@ -104,8 +105,8 @@ for i in pbar:
     pbar.set_description(f'loss: {np.mean(losses[-100:]):0.6f}')
 
     if i % 200 == 0:
-        cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.5], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
-        feature_samples = renderer(planes.repeat(cond.shape[0], 1, 1, 1, 1), decoder, cond, None,
+        cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.9], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
+        feature_samples, _ = renderer(planes.repeat(cond.shape[0], 1, 1, 1, 1), decoder, cond, None,
                                    {'density_noise': 0, 'box_warp': 0.999,
                                     'neural_rendering_resolution': rendering_res})
         # import ipdb; ipdb.set_trace()
@@ -114,3 +115,4 @@ for i in pbar:
         rgb_image_to_save = torch.cat((feature_image[:, :3], gt_img), dim=0)
         torchvision.utils.save_image((rgb_image_to_save + 1)/2, os.path.join(out_dir, f'{i:03d}.png'))
 
+print(rend_params)

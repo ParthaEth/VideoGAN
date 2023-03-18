@@ -291,8 +291,8 @@ class ImageFolderDataset(Dataset):
 
         _, resolution, _ = image.shape
         if self.return_video:
-            max_x_zoom = 4
-            num_resolutions = 3
+            max_x_zoom = 1.2
+            num_resolutions = 250
             target_resolution = np.round(np.linspace(resolution, resolution/max_x_zoom, num_resolutions)).astype(int)
             target_resolution = np.repeat(target_resolution, np.ceil(resolution/num_resolutions))[0:resolution]
             # video := color, x, y, t

@@ -14,6 +14,8 @@ ray, and computes pixel colors using the volume rendering equation.
 """
 
 import math
+
+import ipdb
 import torch
 import torch.nn as nn
 
@@ -21,23 +23,24 @@ from training.volumetric_rendering.ray_marcher import MipRayMarcher2
 from training.volumetric_rendering import math_utils
 import random
 
-def generate_planes():
+def generate_planes(num_planes):
     """
     Defines planes by the three vectors that form the "axes" of the
     plane. Should work with arbitrary number of planes and planes of
     arbitrary orientation.
     """
-    return torch.tensor([[[1, 0, 0],
-                            [0, 1, 0],  #XY
-                            [0, 0, 1]],
-
-                            [[1, 0, 0],
-                            [0, 0, 1],  #XT
-                            [0, 1, 0]],
-
-                            [[0, 1, 0],
-                            [0, 0, 1],  # YT
-                            [1, 0, 0]]], dtype=torch.float32)
+    # return torch.tensor([[[1, 0, 0],
+    #                         [0, 1, 0],  #XY
+    #                         [0, 0, 1]],
+    #
+    #                         [[1, 0, 0],
+    #                         [0, 0, 1],  #XT
+    #                         [0, 1, 0]],
+    #
+    #                         [[0, 1, 0],
+    #                         [0, 0, 1],  # YT
+    #                         [1, 0, 0]]], dtype=torch.float32)
+    return torch.randn((num_planes, 3, 3), dtype=torch.float32)
 
 def project_onto_planes(planes, coordinates):
     """
@@ -91,10 +94,11 @@ def sample_from_3dgrid(grid, coordinates):
 
 
 class ImportanceRenderer(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, num_planes):
         super().__init__()
         self.ray_marcher = MipRayMarcher2()
-        self.plane_axes = generate_planes()
+        self.plane_axes = torch.nn.Parameter(generate_planes(num_planes))
+        # self.plane_axes = generate_planes()
 
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
         self.plane_axes = self.plane_axes.to(ray_origins.device)
@@ -266,10 +270,10 @@ class ImportanceRenderer(torch.nn.Module):
 
 
 class AxisAligndProjectionRenderer(ImportanceRenderer):
-    def __init__(self, return_video):
+    def __init__(self, return_video, num_planes):
         # self.neural_rendering_resolution = neural_rendering_resolution
         self.return_video = return_video
-        super().__init__()
+        super().__init__(num_planes)
 
     def forward(self, planes, decoder, c, ray_directions, rendering_options):
         # assert ray_origins is None  # This will be ignored silently
@@ -325,8 +329,9 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         sample_directions = sample_coordinates
 
         out = self.run_model(planes, decoder, sample_coordinates, rendering_options)
-        colors_coarse = out['rgb']
+        colors_coarse, features = out['rgb'], out['features']
         # import ipdb; ipdb.set_trace()
         # colors_coarse = planes[:, 0, :, :64, :64].permute(0, 2, 3, 1).reshape((batch_size, -1, planes_ch)).contiguous()
+        # import ipdb; ipdb.set_trace()
 
-        return colors_coarse
+        return colors_coarse, features
