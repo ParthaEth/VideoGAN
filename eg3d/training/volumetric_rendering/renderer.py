@@ -55,8 +55,12 @@ def project_onto_planes(planes, coordinates):
     N, M, C = coordinates.shape
     n_planes, _, _ = planes.shape
     coordinates = coordinates.unsqueeze(1).expand(-1, n_planes, -1, -1).reshape(N*n_planes, M, 3)
+    cod_norms = torch.linalg.norm(coordinates, dim=-1, keepdim=True)
     inv_planes = torch.linalg.inv(planes).unsqueeze(0).expand(N, -1, -1, -1).reshape(N*n_planes, 3, 3)
     projections = torch.bmm(coordinates, inv_planes)
+    proj_norm = torch.linalg.norm(projections, dim=-1, keepdim=True)
+    projections = projections * (cod_norms / proj_norm)
+    # import ipdb; ipdb.set_trace()
     return projections[..., :2]
 
 
