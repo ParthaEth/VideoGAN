@@ -29,6 +29,7 @@ def generate_planes(num_planes):
     plane. Should work with arbitrary number of planes and planes of
     arbitrary orientation.
     """
+    assert num_planes % 3 == 0, f'num_planes should be multiple of 3 given {num_planes}'
     # return torch.tensor([[[1, 0, 0],
     #                         [0, 1, 0],  #XY
     #                         [0, 0, 1]],

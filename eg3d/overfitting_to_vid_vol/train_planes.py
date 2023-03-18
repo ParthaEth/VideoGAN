@@ -15,7 +15,7 @@ from training.dataset import ImageFolderDataset
 
 
 class VidFromImg:
-    def __init__(self, img_path, resolution, max_x_zoom=1.7, num_resolutions=20):
+    def __init__(self, img_path, resolution, max_x_zoom=4, num_resolutions=20):
         image = PIL.Image.open(img_path).convert('RGB')
         image = image.resize((resolution, resolution))
         self.resolution = resolution
@@ -45,10 +45,11 @@ class VidFromImg:
 device = 'cuda'
 plane_h = plane_w = 128
 rendering_res = 256
-plane_c = 64
-planes = torch.randn(1, 6, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)*0.01
+plane_c = 16
+num_planes = 18
+planes = torch.randn(1, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)*0.01
 planes.requires_grad = True
-renderer = AxisAligndProjectionRenderer(return_video=True).to(device)
+renderer = AxisAligndProjectionRenderer(return_video=True, num_planes=num_planes).to(device)
 rend_params = [param for param in renderer.parameters()]
 
 
@@ -115,4 +116,4 @@ for i in pbar:
         rgb_image_to_save = torch.cat((feature_image[:, :3], gt_img), dim=0)
         torchvision.utils.save_image((rgb_image_to_save + 1)/2, os.path.join(out_dir, f'{i:03d}.png'))
 
-print(rend_params)
+# print(rend_params)

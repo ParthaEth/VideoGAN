@@ -37,19 +37,19 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_resolution=img_resolution
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
-        self.plane_features = 64
-        self.num_planes = 3
+        self.plane_features = 16
+        self.num_planes = 18
         self.renderer = AxisAligndProjectionRenderer(return_video, self.num_planes)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
-        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
+        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=128,
                                           img_channels=self.plane_features * self.num_planes,
                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
-        self.decoder = OSGDecoder(self.plane_features, self.num_planes,
+        self.decoder = OSGDecoder(self.plane_features,
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
                                    'decoder_output_dim': 32})
         self.rendering_kwargs = rendering_kwargs
@@ -165,7 +165,7 @@ from training.networks_stylegan2 import Conv2dLayer, SynthesisBlock
 #         return {'rgb': rgb, 'sigma': sigma}
 
 class OSGDecoder(torch.nn.Module):
-    def __init__(self, n_features, num_planes, options):
+    def __init__(self, n_features, options):
         super().__init__()
         self.hidden_dim = 64
         # self.rend_res = options['rend_res']
@@ -179,8 +179,14 @@ class OSGDecoder(torch.nn.Module):
             # # torch.nn.Softplus(), #5
             # Conv2dLayer(self.hidden_dim, 1 + options['decoder_output_dim'], 1,
             #             lr_multiplier=options['decoder_lr_mul'])] #6
-            SynthesisBlock(in_channels=n_features * num_planes,  out_channels=n_features, w_dim=4, resolution=None,
+            SynthesisBlock(in_channels=n_features * 3,  out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1),
+            # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
+            #                img_channels=3, use_noise=False, is_last=False, up=1),
+            # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
+            #                img_channels=3, use_noise=False, is_last=False, up=1),
+            # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
+            #                img_channels=3, use_noise=False, is_last=False, up=1),
             SynthesisBlock(in_channels=n_features, out_channels=options['decoder_output_dim'], w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1)
         ]
@@ -190,9 +196,10 @@ class OSGDecoder(torch.nn.Module):
         # Aggregate features
         # print(f'feature:{sampled_features[0, :, 100, :4]}')
         # sampled_features = sampled_features.mean(1, keepdim=True)
-        N, planes, M, C = sampled_features.shape
-        ws = torch.zeros((N, 3, 4), dtype=sampled_features.dtype, device=sampled_features.device)
-        x = sampled_features.permute(0, 1, 3, 2).reshape(N, C * planes, rendering_res, rendering_res)
+        batch_size, planes, num_pts, pln_chnls = sampled_features.shape
+        ws = torch.zeros((batch_size * planes//3, 3, 4), dtype=sampled_features.dtype, device=sampled_features.device)
+        x = sampled_features.permute(0, 1, 3, 2).reshape(batch_size * planes//3, 3 * pln_chnls, rendering_res,
+                                                         rendering_res)
         img = None
         for i, layer in enumerate(self.net):
             layer.resolution = rendering_res
@@ -200,10 +207,11 @@ class OSGDecoder(torch.nn.Module):
             #     skip = x
             # elif i == len(self.net) - 3:
             #     x = x + skip
+            # import ipdb; ipdb.set_trace()
             x, img = layer(x, img, ws)
 
-        img = img.view(N, -1, M).permute(0, 2, 1)
-        x = x.view(N, -1, M).permute(0, 2, 1)
+        img = img.view(batch_size, planes//3, 3, num_pts).mean(dim=1).permute(0, 2, 1)
+        x = x.view(batch_size, planes//3, -1, num_pts).mean(dim=1).permute(0, 2, 1)
         # # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
         # rgb = torch.sigmoid(x[..., 1:]) * 2 - 1
         return {'rgb': img, 'features': x}
