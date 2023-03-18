@@ -45,8 +45,8 @@ class VidFromImg:
 device = 'cuda'
 plane_h = plane_w = 128
 rendering_res = 256
-plane_c = 16
-num_planes = 18
+plane_c = 32
+num_planes = 63
 planes = torch.randn(1, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)*0.01
 planes.requires_grad = True
 renderer = AxisAligndProjectionRenderer(return_video=True, num_planes=num_planes).to(device)
