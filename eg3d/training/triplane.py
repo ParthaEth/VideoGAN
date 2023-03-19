@@ -171,24 +171,21 @@ class OSGDecoder(torch.nn.Module):
         # self.rend_res = options['rend_res']
 
         self.net = torch.nn.ModuleList([
-            # Conv2dLayer(n_features * 3, self.hidden_dim, 3, lr_multiplier=options['decoder_lr_mul']), #0
-            # torch.nn.Softplus(),  #1
-            # # torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #2
-            # # torch.nn.Softplus(), #3
-            # # torch.nn.Conv2d(self.hidden_dim, self.hidden_dim, 3, padding=1, stride=1, padding_mode='reflect'), #4
-            # # torch.nn.Softplus(), #5
-            # Conv2dLayer(self.hidden_dim, 1 + options['decoder_output_dim'], 1,
-            #             lr_multiplier=options['decoder_lr_mul'])] #6
-            SynthesisBlock(in_channels=n_features * 3,  out_channels=n_features, w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1),
+            SynthesisBlock(in_channels=n_features * 3, out_channels=4*n_features, w_dim=4, resolution=None,
+                           img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
+                           # architecture='resnet',
+                           architecture='orig',
+                           ),
+            SynthesisBlock(in_channels=4*n_features, out_channels=n_features, w_dim=4, resolution=None,
+                           img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
+                           activation='relu',
+                           architecture='resnet'),
             # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
-            #                img_channels=3, use_noise=False, is_last=False, up=1),
-            # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
-            #                img_channels=3, use_noise=False, is_last=False, up=1),
-            # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
-            #                img_channels=3, use_noise=False, is_last=False, up=1),
+            #                img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
+            #                architecture='skip'),
             SynthesisBlock(in_channels=n_features, out_channels=options['decoder_output_dim'], w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1)
+                           img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
+                           architecture='skip')
         ]
         )
 
@@ -208,7 +205,10 @@ class OSGDecoder(torch.nn.Module):
             # elif i == len(self.net) - 3:
             #     x = x + skip
             # import ipdb; ipdb.set_trace()
-            x, img = layer(x, img, ws)
+            if i <= 1:
+                x, img = layer(x, img, ws[:, :2, :])
+            else:
+                x, img = layer(x, img, ws)
 
         img = img.view(batch_size, planes//3, 3, num_pts).mean(dim=1).permute(0, 2, 1)
         x = x.view(batch_size, planes//3, -1, num_pts).mean(dim=1).permute(0, 2, 1)

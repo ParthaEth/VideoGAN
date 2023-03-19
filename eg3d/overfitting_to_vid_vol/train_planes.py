@@ -65,6 +65,8 @@ dec_params = [param for param in decoder.parameters()]
 
 allparams = [planes, ] + rend_params + dec_params
 opt = torch.optim.Adam(allparams, lr=1e-3, betas=(0.5, 0.99))
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', factor=0.5, patience=300, verbose=True,
+                                                       threshold=1e-3)
 
 train_itr = 5_000
 criterion = torch.nn.MSELoss()
@@ -103,7 +105,8 @@ for i in pbar:
     opt.step()
     opt.zero_grad()
     losses.append(loss.item())
-    pbar.set_description(f'loss: {np.mean(losses[-100:]):0.6f}')
+    pbar.set_description(f'loss: {np.mean(losses[-100:]):0.6f}, PSNR: {10*np.log10(2/np.mean(losses[-100:])):0.2f}')
+    scheduler.step(np.mean(losses[-100:]))
 
     if i % 200 == 0:
         cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.9], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
