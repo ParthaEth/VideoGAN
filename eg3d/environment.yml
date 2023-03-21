@@ -15,7 +15,7 @@ channels:
 dependencies:
   - python >= 3.8
   - pip
-  - numpy==1.22
+  - numpy=1.22
   - click>=8.0
   - pillow=8.3.1
   - scipy=1.7.1
@@ -35,3 +35,4 @@ dependencies:
     - psutil
     - mrcfile
     - tensorboard
+    - torchvision==1.11.0
