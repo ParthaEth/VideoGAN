@@ -21,7 +21,7 @@ import random
 import time
 from pathlib import Path
 import shutil
-import imageio
+import imageio.v3 as iio
 
 
 try:
@@ -262,12 +262,13 @@ class VideoFolderDataset(Dataset):
         return dict(super().__getstate__(), _zipfile=None)
 
     def read_vid_rom_file(self, fname):
-        reader = imageio.get_reader(fname, mode='I')
-        vid_vol = []
-        for im in reader:
-            vid_vol.append(im)
+        # reader = imageio.get_reader(fname, mode='I')
+        # vid_vol = []
+        # for im in reader:
+        #     vid_vol.append(im)
+        vid_vol = iio.imread(fname, plugin="pyav")
 
-        return np.stack(vid_vol, axis=0).transpose(3, 1, 2, 0)
+        return vid_vol.transpose(3, 1, 2, 0)
 
     def _load_raw_image(self, raw_idx, skip_cache=False):
         fname = self._video_fnames[raw_idx]
