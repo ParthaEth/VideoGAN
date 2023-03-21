@@ -21,6 +21,7 @@ import random
 import time
 from pathlib import Path
 import shutil
+import imageio
 
 
 try:
@@ -192,12 +193,12 @@ class Dataset(torch.utils.data.Dataset):
 
 #----------------------------------------------------------------------------
 
-class ImageFolderDataset(Dataset):
+class VideoFolderDataset(Dataset):
     warning_displayed = 0
     def __init__(self,
         path,                   # Path to directory or zip.
         resolution      = None, # Ensure specific resolution, None = highest available.
-        return_video=False,
+        return_video    = False,
         **super_kwargs,         # Additional arguments for the Dataset base class.
     ):
         self._path = path
@@ -208,23 +209,23 @@ class ImageFolderDataset(Dataset):
 
         if os.path.isdir(self._path):
             self._type = 'dir'
-            self._all_fnames = {os.path.relpath(os.path.join(root, fname), start=self._path) for root, _dirs, files in os.walk(self._path) for fname in files}
+            # self._all_fnames = {os.path.relpath(os.path.join(root, fname), start=self._path) for root, _dirs, files in os.walk(self._path) for fname in files}
+            self._all_fnames = {os.path.join(self._path, f'{fname_idx:05d}.mp4') for fname_idx in range(40_000)}
         elif self._file_ext(self._path) == '.zip':
             self._type = 'zip'
             self._all_fnames = set(self._get_zipfile().namelist())
         else:
             raise IOError('Path must point to a directory or zip')
 
-        PIL.Image.init()
-        self._image_fnames = sorted(fname for fname in self._all_fnames if self._file_ext(fname) in PIL.Image.EXTENSION)
-        if len(self._image_fnames) == 0:
-            raise IOError('No image files found in the specified path')
+        self._video_fnames = sorted(fname for fname in self._all_fnames if self._file_ext(fname) in ['.mp4'])
+        if len(self._video_fnames) == 0:
+            raise IOError('No video files found in the specified path')
 
         name = os.path.splitext(os.path.basename(self._path))[0]
-        raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0, skip_cache=True)[0].shape)
+        raw_shape = [len(self._video_fnames)] + list(self._load_raw_image(0, skip_cache=True)[0].shape)
         # import ipdb; ipdb.set_trace()
-        if raw_shape[1] != 3 and ImageFolderDataset.warning_displayed <= max_warnings:
-            ImageFolderDataset.warning_displayed += 1
+        if raw_shape[1] != 3 and VideoFolderDataset.warning_displayed <= max_warnings:
+            VideoFolderDataset.warning_displayed += 1
             print(f'\n\n\n\n\n\n\n\n\nWARNING{self.warning_displayed}: Generator cannot generate other than 3 color '
                   f'channel. But we got {raw_shape[1]} color cannels. forcing 3 color channels. This might be an '
                   f'error!!!')
@@ -260,73 +261,46 @@ class ImageFolderDataset(Dataset):
     def __getstate__(self):
         return dict(super().__getstate__(), _zipfile=None)
 
-    @staticmethod
-    def _centre_crop_resize(img, crop_height, crop_width, resize_h, resize_w):
-        width, height = img.size  # Get dimensions
+    def read_vid_rom_file(self, fname):
+        reader = imageio.get_reader(fname, mode='I')
+        vid_vol = []
+        for im in reader:
+            vid_vol.append(im)
 
-        left = (width - crop_width) // 2
-        top = (height - crop_height) // 2
-        right = (width + crop_width) // 2
-        bottom = (height + crop_height) // 2
-
-        # Crop the center of the image
-        img = img.crop((left, top, right, bottom))
-        return img.resize((resize_w, resize_h))
+        return np.stack(vid_vol, axis=0).transpose(3, 1, 2, 0)
 
     def _load_raw_image(self, raw_idx, skip_cache=False):
-        fname = self._image_fnames[raw_idx]
+        fname = self._video_fnames[raw_idx]
         lbl_cond = [0, 0, 1, 0]
         if getattr(self, 'cache_dir', None) is None or skip_cache:
             with self._open_file(fname) as f:
-                image = PIL.Image.open(f).convert('RGB')
-                image = np.array(image).transpose(2, 0, 1)
+                vid_vol = self.read_vid_rom_file(fname)
         else:
-            image = self.get_from_cached(fname)
-            if image is None:
+            vid_vol = self.get_from_cached(fname)
+            if vid_vol is None:
                 # print(f'Cache miss! {fname}')
                 self.write_to_cache(fname)
-                image = self.get_from_cached(fname)
-            # else:
-            #     image = np.array(image.convert('RGB')).transpose(2, 0, 1)
+                vid_vol = self.get_from_cached(fname)
 
-        _, resolution, _ = image.shape
+        _, _, resolution, _ = vid_vol.shape
         if self.return_video:
-            max_x_zoom = 1.7
-            num_resolutions = 250
-            target_resolution = np.round(np.linspace(resolution, resolution/max_x_zoom, num_resolutions)).astype(int)
-            target_resolution = np.repeat(target_resolution, np.ceil(resolution/num_resolutions))[0:resolution]
-            # video := color, x, y, t
-            # image = np.array(image).transpose(2, 0, 1)
-            image = np.pad(image, pad_width=((0, 0), (3, 3), (3, 3)), mode='reflect')
             if getattr(self, 'fixed_time_frames', True):
                 constant_axis = 't'
             else:
                 constant_axis = random.choice(['x', 'y', 't'])
-            cnst_coordinate = np.random.randint(3, resolution+3, 1)[0]
-            # import ipdb; ipdb.set_trace()
-            lbl_cond = self.axis_dict[constant_axis] + [(cnst_coordinate - 3)/resolution]
-            if constant_axis == 'x':
-                video = np.zeros((3, 3, resolution, resolution), dtype=np.uint8)
-                for frame_id in range(resolution):
-                    video[:, :, :, frame_id] = \
-                        np.array(self._centre_crop_resize(
-                            PIL.Image.fromarray(image[:, cnst_coordinate-1:cnst_coordinate+2, :].transpose(1, 2, 0)),
-                            3, target_resolution[frame_id], 3, resolution)).transpose(2, 0, 1)
-                image = video[:, 1, :, :]
-            elif constant_axis == 'y':
-                video = np.zeros((3, resolution, 3, resolution), dtype=np.uint8)
-                for frame_id in range(resolution):
-                    video[:, :, :, frame_id] = \
-                        np.array(self._centre_crop_resize(
-                            PIL.Image.fromarray(image[:, :, cnst_coordinate-1:cnst_coordinate+2].transpose(1, 2, 0)),
-                            target_resolution[frame_id], 3, resolution, 3)).transpose(2, 0, 1)
-                image = video[:, :, 1, :]
-            elif constant_axis == 't':
-                image = self._centre_crop_resize(PIL.Image.fromarray(image.transpose(1, 2, 0)),
-                                                 target_resolution[cnst_coordinate - 3],
-                                                 target_resolution[cnst_coordinate - 3],
-                                                 resolution, resolution)
-                image = np.array(image).transpose(2, 0, 1)  # HWC => CHW
+            cnst_coordinate = np.random.randint(0, resolution, 1)[0]
+        else:
+            constant_axis = 't'
+            cnst_coordinate = 0
+
+        # import ipdb; ipdb.set_trace()
+        lbl_cond = self.axis_dict[constant_axis] + [cnst_coordinate/resolution]
+        if constant_axis == 'x':
+            image = vid_vol[:, cnst_coordinate, :, :]
+        elif constant_axis == 'y':
+            image = vid_vol[:, :, cnst_coordinate, :]
+        elif constant_axis == 't':
+            image = vid_vol[:, :, :, cnst_coordinate]
 
         return image, np.array(lbl_cond)
 
@@ -339,7 +313,7 @@ class ImageFolderDataset(Dataset):
         if labels is None:
             return None
         labels = dict(labels)
-        labels = [labels[fname.replace('\\', '/')] for fname in self._image_fnames]
+        labels = [labels[fname.replace('\\', '/')] for fname in self._video_fnames]
         labels = np.array(labels)
         labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])[:, :4]
         if self.return_video:
@@ -366,13 +340,12 @@ class ImageFolderDataset(Dataset):
             if os.path.exists(file_path):
                 # cache hit
                 try:
-                    image = PIL.Image.open(file_path)
-                    image = np.array(image.convert('RGB')).transpose(2, 0, 1)
+                    vid_vol = self.read_vid_rom_file(file_path)
                 except OSError as e:
                     print(f'Bad file {fname}. Removing from cache. \n {e}')
                     os.remove(file_path)
                     return None
-                return image
+                return vid_vol
 
             else:
                 return None
