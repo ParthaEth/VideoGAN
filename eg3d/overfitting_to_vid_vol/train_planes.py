@@ -90,7 +90,7 @@ decoder = OSGDecoder(plane_c, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).t
 dec_params = [param for param in decoder.parameters()]
 
 allparams = [planes, ] + rend_params + dec_params
-opt = torch.optim.Adam(allparams, lr=1e-3, betas=(0.2, 0.9))
+opt = torch.optim.Adam(allparams, lr=1e-3, betas=(0.0, 0.9))
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', factor=0.25, patience=300, verbose=True,
                                                        threshold=1e-3)
 
