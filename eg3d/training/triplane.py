@@ -173,13 +173,13 @@ class OSGDecoder(torch.nn.Module):
 
         self.net = torch.nn.ModuleList([
             SynthesisBlock(in_channels=n_features * 3, out_channels=4*n_features, w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
+                           img_channels=3, use_noise=False, is_last=False, up=1, activation='sin_10', kernel_size=1,
                            # architecture='resnet',
                            architecture='orig',
                            ),
             SynthesisBlock(in_channels=4*n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
-                           activation='sin',
+                           activation='sin_1',
                            architecture='resnet'),
             # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
             #                img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
