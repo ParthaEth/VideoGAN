@@ -11,7 +11,7 @@ import torchvision
 import tqdm
 from training.triplane import OSGDecoder
 from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
-from training.dataset import ImageFolderDataset
+from torchvision.transforms import functional as F
 
 
 class VidFromImg:
@@ -25,7 +25,8 @@ class VidFromImg:
 
         self.vid_vol = []
         for cur_res in target_resolution:
-            frame = ImageFolderDataset._centre_crop_resize(image, cur_res, cur_res, resolution, resolution)
+            # frame = VideoFolderDataset._centre_crop_resize(image, cur_res, cur_res, resolution, resolution)
+            frame = F.resize(F.center_crop(image, cur_res), resolution)
             frame = np.array(frame).transpose(2, 0, 1)
             self.vid_vol.append(frame)
 

@@ -37,13 +37,13 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_resolution=img_resolution
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
-        self.plane_features = 16
-        self.num_planes = 18
+        self.plane_features = 32
+        self.num_planes = 12
         self.renderer = AxisAligndProjectionRenderer(return_video, self.num_planes)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         self.ray_sampler = RaySampler()
-        self.neural_rendering_resolution = 64
-        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=128,
+        self.neural_rendering_resolution = 256
+        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
                                           img_channels=self.plane_features * self.num_planes,
                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
@@ -100,10 +100,11 @@ class TriPlaneGenerator(torch.nn.Module):
         # depth_image = depth_samples.permute(0, 2, 1).reshape(b_size, 1, H, W)
 
         # Run superresolution to get final image
-        sr_image = self.superresolution(
-            rgb_image, feature_image, ws,
-            noise_mode=self.rendering_kwargs['superresolution_noise_mode'],
-            **{k:synthesis_kwargs[k] for k in synthesis_kwargs.keys() if k != 'noise_mode'})
+        # sr_image = self.superresolution(
+        #     rgb_image, feature_image, ws,
+        #     noise_mode=self.rendering_kwargs['superresolution_noise_mode'],
+        #     **{k:synthesis_kwargs[k] for k in synthesis_kwargs.keys() if k != 'noise_mode'})
+        sr_image = rgb_image
 
         return {'image': sr_image, 'image_raw': rgb_image, 'image_depth': None}
     

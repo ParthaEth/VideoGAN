@@ -153,11 +153,11 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose)
             args.G = network_dict['G_ema'] # subclass of torch.nn.Module
     else:
         args.G = None
-        args.G_kwargs = dnnlib.EasyDict(class_name='training.dataset.ImageFolderDataset', path=data_2)
+        args.G_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data_2)
 
     # Initialize dataset options.
     if data is not None:
-        args.dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.ImageFolderDataset', path=data)
+        args.dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data)
     elif network_dict['training_set_kwargs'] is not None:
         args.dataset_kwargs = dnnlib.EasyDict(network_dict['training_set_kwargs'])
     else:

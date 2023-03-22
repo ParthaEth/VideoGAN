@@ -106,7 +106,7 @@ def launch_training(c, desc, outdir, dry_run):
 
 def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames):
     try:
-        dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.ImageFolderDataset', path=data, use_labels=True,
+        dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data, use_labels=True,
                                          max_size=None, xflip=False, return_video=return_video, cache_dir=cache_dir,
                                          fixed_time_frames=fixed_time_frames)
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # Subclass of training.dataset.Dataset.

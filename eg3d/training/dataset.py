@@ -21,7 +21,7 @@ import random
 import time
 from pathlib import Path
 import shutil
-import imageio.v3 as iio
+import imageio
 
 
 try:
@@ -210,7 +210,7 @@ class VideoFolderDataset(Dataset):
         if os.path.isdir(self._path):
             self._type = 'dir'
             # self._all_fnames = {os.path.relpath(os.path.join(root, fname), start=self._path) for root, _dirs, files in os.walk(self._path) for fname in files}
-            self._all_fnames = {os.path.join(self._path, f'{fname_idx:05d}.mp4') for fname_idx in range(40_000)}
+            self._all_fnames = {os.path.join(self._path, f'{fname_idx:05d}.mp4') for fname_idx in range(50_000)}
         elif self._file_ext(self._path) == '.zip':
             self._type = 'zip'
             self._all_fnames = set(self._get_zipfile().namelist())
@@ -261,21 +261,20 @@ class VideoFolderDataset(Dataset):
     def __getstate__(self):
         return dict(super().__getstate__(), _zipfile=None)
 
-    def read_vid_rom_file(self, fname):
-        # reader = imageio.get_reader(fname, mode='I')
-        # vid_vol = []
-        # for im in reader:
-        #     vid_vol.append(im)
-        vid_vol = iio.imread(fname, plugin="pyav")
+    def read_vid_from_file(self, fname):
+        reader = imageio.get_reader(fname, mode='I')
+        vid_vol = []
+        for im in reader:
+            vid_vol.append(im)
 
-        return vid_vol.transpose(3, 1, 2, 0)
+        return np.stack(vid_vol, axis=0).transpose(3, 1, 2, 0)
 
     def _load_raw_image(self, raw_idx, skip_cache=False):
         fname = self._video_fnames[raw_idx]
         lbl_cond = [0, 0, 1, 0]
         if getattr(self, 'cache_dir', None) is None or skip_cache:
             with self._open_file(fname) as f:
-                vid_vol = self.read_vid_rom_file(fname)
+                vid_vol = self.read_vid_from_file(fname)
         else:
             vid_vol = self.get_from_cached(fname)
             if vid_vol is None:
@@ -306,17 +305,18 @@ class VideoFolderDataset(Dataset):
         return image, np.array(lbl_cond)
 
     def _load_raw_labels(self):
-        fname = 'dataset.json'
-        if fname not in self._all_fnames:
-            return None
-        with self._open_file(fname) as f:
-            labels = json.load(f)['labels']
-        if labels is None:
-            return None
-        labels = dict(labels)
-        labels = [labels[fname.replace('\\', '/')] for fname in self._video_fnames]
-        labels = np.array(labels)
-        labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])[:, :4]
+        # fname = 'dataset.json'
+        # if fname not in self._all_fnames:
+        #     return None
+        # with self._open_file(fname) as f:
+        #     labels = json.load(f)['labels']
+        # if labels is None:
+        #     return None
+        # labels = dict(labels)
+        # labels = [labels[fname.replace('\\', '/')] for fname in self._video_fnames]
+        # labels = np.array(labels)
+        # labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])[:, :4]
+        labels = np.zeros((len(self), 5), dtype=np.float32)
         if self.return_video:
             for i in range(len(labels)):
                 if self.fixed_time_frames:
@@ -341,7 +341,7 @@ class VideoFolderDataset(Dataset):
             if os.path.exists(file_path):
                 # cache hit
                 try:
-                    vid_vol = self.read_vid_rom_file(file_path)
+                    vid_vol = self.read_vid_from_file(file_path)
                 except OSError as e:
                     print(f'Bad file {fname}. Removing from cache. \n {e}')
                     os.remove(file_path)
