@@ -179,7 +179,7 @@ class OSGDecoder(torch.nn.Module):
                            ),
             SynthesisBlock(in_channels=4*n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
-                           activation='relu',
+                           activation='sin',
                            architecture='resnet'),
             # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
             #                img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
@@ -206,10 +206,10 @@ class OSGDecoder(torch.nn.Module):
             # elif i == len(self.net) - 3:
             #     x = x + skip
             # import ipdb; ipdb.set_trace()
-            if i <= 1:
-                x, img = layer(x, img, ws[:, :2, :])
-            else:
+            if layer.architecture == 'skip':
                 x, img = layer(x, img, ws)
+            else:
+                x, img = layer(x, img, ws[:, :2, :])
 
         img = img.view(batch_size, planes//3, 3, num_pts).mean(dim=1).permute(0, 2, 1)
         x = x.view(batch_size, planes//3, -1, num_pts).mean(dim=1).permute(0, 2, 1)

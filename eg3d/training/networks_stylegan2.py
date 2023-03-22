@@ -300,7 +300,7 @@ class SynthesisLayer(torch.nn.Module):
         self.conv_clamp = conv_clamp
         self.register_buffer('resample_filter', upfirdn2d.setup_filter(resample_filter))
         self.padding = kernel_size // 2
-        self.act_gain = bias_act.activation_funcs[activation].def_gain
+        self.act_gain = getattr(bias_act.activation_funcs.get(activation), 'def_gain', 1)
 
         self.affine = FullyConnectedLayer(w_dim, in_channels, bias_init=1)
         memory_format = torch.channels_last if channels_last else torch.contiguous_format
@@ -331,7 +331,11 @@ class SynthesisLayer(torch.nn.Module):
 
         act_gain = self.act_gain * gain
         act_clamp = self.conv_clamp * gain if self.conv_clamp is not None else None
-        x = bias_act.bias_act(x, self.bias.to(x.dtype), act=self.activation, gain=act_gain, clamp=act_clamp)
+        if self.activation.lower() == 'sin':
+            # import ipdb; ipdb.set_trace()
+            x = torch.sin(x + self.bias.to(x.dtype).reshape([-1 if i == 1 else 1 for i in range(x.ndim)]))
+        else:
+            x = bias_act.bias_act(x, self.bias.to(x.dtype), act=self.activation, gain=act_gain, clamp=act_clamp)
         return x
 
     def extra_repr(self):
