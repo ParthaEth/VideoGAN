@@ -165,6 +165,19 @@ from training.networks_stylegan2 import Conv2dLayer, SynthesisBlock
 #         # import ipdb; ipdb.set_trace()
 #         return {'rgb': rgb, 'sigma': sigma}
 
+
+class ScaleForwardIdentityBackward(torch.autograd.Function):
+     @staticmethod
+     def forward(ctx, inp, mult_fact):
+         result = inp * mult_fact
+         # ctx.save_for_backward(result)
+         return result
+
+     @staticmethod
+     def backward(ctx, grad_output):
+         return grad_output, None
+
+
 class OSGDecoder(torch.nn.Module):
     def __init__(self, n_features, options):
         super().__init__()
@@ -173,9 +186,8 @@ class OSGDecoder(torch.nn.Module):
 
         self.net = torch.nn.ModuleList([
             SynthesisBlock(in_channels=n_features * 3, out_channels=4*n_features, w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1, activation='sin_10', kernel_size=1,
-                           # architecture='resnet',
-                           architecture='orig',
+                           img_channels=3, use_noise=False, is_last=False, up=1, activation=['sin_10', 'sin_10'],
+                           kernel_size=1, architecture='orig',
                            ),
             SynthesisBlock(in_channels=4*n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
@@ -198,6 +210,8 @@ class OSGDecoder(torch.nn.Module):
         ws = torch.zeros((batch_size * planes//3, 3, 4), dtype=sampled_features.dtype, device=sampled_features.device)
         x = sampled_features.permute(0, 1, 3, 2).reshape(batch_size * planes//3, 3 * pln_chnls, rendering_res,
                                                          rendering_res)
+        x = ScaleForwardIdentityBackward.apply(x, 0.005952380952380953)
+        # import ipdb; ipdb.set_trace()
         img = None
         for i, layer in enumerate(self.net):
             layer.resolution = rendering_res

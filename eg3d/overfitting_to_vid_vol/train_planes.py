@@ -64,13 +64,16 @@ def get_batch(vid_vols, device):
     return torch.cat(gt_img_batch), torch.stack(cond_batch)
 
 
+torch.manual_seed(1)
+random.seed(1)
+np.random.seed(1)
 device = 'cuda'
 plane_h = plane_w = 128
 rendering_res = 256
 plane_c = 32
 num_planes = 12
 b_size = 3
-planes = torch.randn(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)*0.01
+planes = torch.randn(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device) * 1.68
 planes.requires_grad = True
 renderer = AxisAligndProjectionRenderer(return_video=True, num_planes=num_planes).to(device)
 rend_params = [param for param in renderer.parameters()]
@@ -89,8 +92,10 @@ os.makedirs(out_dir, exist_ok=True)
 decoder = OSGDecoder(plane_c, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
 dec_params = [param for param in decoder.parameters()]
 
-allparams = [planes, ] + rend_params + dec_params
-opt = torch.optim.Adam(allparams, lr=1e-3, betas=(0.0, 0.9))
+mdl_params = rend_params + dec_params
+opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3 * 1.68 / 0.01},
+                        {'params': mdl_params}], lr=1e-3, betas=(0.0, 0.9))
+# opt = torch.optim.SGD(allparams, lr=1e-3,)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', factor=0.25, patience=300, verbose=True,
                                                        threshold=1e-3)
 
@@ -118,7 +123,8 @@ for i in pbar:
     opt.step()
     opt.zero_grad()
     losses.append(loss.item())
-    pbar.set_description(f'loss: {np.mean(losses[-10:]):0.6f}, PSNR: {10*np.log10(2/np.mean(losses[-10:])):0.2f}')
+    pbar.set_description(f'loss: {np.mean(losses[-10:]):0.6f}, PSNR: {10*np.log10(2/np.mean(losses[-10:])):0.2f}, '
+                         f'planes.std: {planes.std().item():0.5f}')
     scheduler.step(np.mean(losses[-10:]))
 
     if i % 200 == 0:
