@@ -12,7 +12,7 @@ import torch
 from torch_utils import persistence
 from training.networks_stylegan2 import Generator as StyleGAN2Backbone
 from training.volumetric_rendering.renderer import ImportanceRenderer, AxisAligndProjectionRenderer
-from training.volumetric_rendering.ray_sampler import RaySampler
+# from training.volumetric_rendering.ray_sampler import RaySampler
 import dnnlib
 
 @persistence.persistent_class
@@ -41,7 +41,7 @@ class TriPlaneGenerator(torch.nn.Module):
         self.num_planes = 12
         self.renderer = AxisAligndProjectionRenderer(return_video, self.num_planes)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
-        self.ray_sampler = RaySampler()
+        # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
         self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
                                           img_channels=self.plane_features * self.num_planes,
@@ -83,6 +83,8 @@ class TriPlaneGenerator(torch.nn.Module):
             planes = self.backbone.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
         if cache_backbone:
             self._last_planes = planes
+
+        # print(f'plane_std: {planes[0,0,0].std().item():0.5f}')
 
         # Reshape output into three 32-channel planes
         b_size = len(planes)
@@ -191,13 +193,13 @@ class OSGDecoder(torch.nn.Module):
                            ),
             SynthesisBlock(in_channels=4*n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
-                           activation='sin_1',
+                           activation=['sin_1', 'sin_1'],
                            architecture='resnet'),
             # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
             #                img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
             #                architecture='skip'),
             SynthesisBlock(in_channels=n_features, out_channels=options['decoder_output_dim'], w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
+                           img_channels=3, use_noise=False, is_last=False, up=1, activation='sin_1', kernel_size=1,
                            architecture='skip')
         ]
         )
@@ -210,7 +212,9 @@ class OSGDecoder(torch.nn.Module):
         ws = torch.zeros((batch_size * planes//3, 3, 4), dtype=sampled_features.dtype, device=sampled_features.device)
         x = sampled_features.permute(0, 1, 3, 2).reshape(batch_size * planes//3, 3 * pln_chnls, rendering_res,
                                                          rendering_res)
-        x = ScaleForwardIdentityBackward.apply(x, 0.005952380952380953)
+        # x = x / 0.23730 * 0.01/4
+        x = x * 0.05952380952380953 / 3
+        # x = ScaleForwardIdentityBackward.apply(x, 0.005952380952380953)
         # import ipdb; ipdb.set_trace()
         img = None
         for i, layer in enumerate(self.net):

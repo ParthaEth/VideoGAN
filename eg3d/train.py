@@ -194,7 +194,7 @@ def parse_comma_separated_list(s):
 @click.option('--density_reg_p_dist',    help='density regularization strength.', metavar='FLOAT', type=click.FloatRange(min=0), default=0.004, required=False, show_default=True)
 @click.option('--reg_type', help='Type of regularization', metavar='STR',  type=click.Choice(['l1', 'l1-alt', 'monotonic-detach', 'monotonic-fixed', 'total-variation']), required=False, default='l1')
 @click.option('--d_set_cache_dir', help='Cache directory for the dataset. e.g. a local drive /tmp dir ', metavar='STR', type=str, required=False, default='None')
-@click.option('--decoder_lr_mul',    help='decoder learning rate multiplier.', metavar='FLOAT', type=click.FloatRange(min=0), default=1, required=False, show_default=True)
+@click.option('--backbone_lr_mult',    help='backbone learning rate multiplier.', metavar='FLOAT', type=click.FloatRange(min=0), default=1, required=False, show_default=True)
 @click.option('--return_video',    help='Every image will be zoomed to make video', metavar='BOOL', type=bool, required=False, default=False)
 @click.option('--fixed_time_frames', help='Take slice of videos always perpendicular to time axis', metavar='BOOL',
               type=bool, default=False, show_default=True)
@@ -228,7 +228,8 @@ def main(**kwargs):
                                  mapping_kwargs=dnnlib.EasyDict())
     c.D_kwargs = dnnlib.EasyDict(class_name='training.networks_stylegan2.Discriminator', block_kwargs=dnnlib.EasyDict(),
                                  mapping_kwargs=dnnlib.EasyDict(), epilogue_kwargs=dnnlib.EasyDict())
-    c.G_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8)
+    c.G_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8,
+                                     backbone_lr_mult=opts.backbone_lr_mult)
     c.D_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8)
     c.loss_kwargs = dnnlib.EasyDict(class_name='training.loss.StyleGAN2Loss')
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=False, prefetch_factor=2)
@@ -307,7 +308,6 @@ def main(**kwargs):
         'density_reg': opts.density_reg, # strength of density regularization
         'density_reg_p_dist': opts.density_reg_p_dist, # distance at which to sample perturbed points for density regularization
         'reg_type': opts.reg_type, # for experimenting with variations on density regularization
-        'decoder_lr_mul': opts.decoder_lr_mul, # learning rate multiplier for decoder
         'sr_antialias': True,
     }
 

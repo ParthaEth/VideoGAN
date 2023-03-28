@@ -1,4 +1,7 @@
 import sys
+
+import ipdb
+
 sys.path.append('../')
 import os
 import shutil
@@ -72,29 +75,47 @@ plane_h = plane_w = 128
 rendering_res = 256
 plane_c = 32
 num_planes = 12
-b_size = 3
-planes = torch.randn(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device) * 1.68
+b_size = 20
+load_saved = False
+out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
+os.makedirs(out_dir, exist_ok=True)
+
+# planes = torch.tanh(torch.randn(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)) * 0.01
+planes = torch.ones(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device) * 0.168 * 3
 planes.requires_grad = True
+
+if load_saved:
+    pre_trained = torch.load(os.path.join(out_dir, 'rend_and_dec_good.pytorch'))
+
 renderer = AxisAligndProjectionRenderer(return_video=True, num_planes=num_planes).to(device)
 rend_params = [param for param in renderer.parameters()]
+if load_saved:
+    renderer.load_state_dict(pre_trained['renderer'])
+    for param in renderer.parameters():
+        param.requires_grad = False
 
 img_dir = '/is/cluster/fast/pghosh/datasets/ffhq/256X256/'
 vid_vols = []
+img_offset = 100
 for img_id in range(b_size):
-    img_file = os.path.join(img_dir, f'{img_id:05d}.png')
+    img_file = os.path.join(img_dir, f'{img_offset + img_id:05d}.png')
 
     # shutil.copyfile(img_file, os.path.join(out_dir, 'original_img.png'))
     vid_vols.append(VidFromImg(img_file, rendering_res))
 
-out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
-os.makedirs(out_dir, exist_ok=True)
-
 decoder = OSGDecoder(plane_c, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
 dec_params = [param for param in decoder.parameters()]
+if load_saved:
+    decoder.load_state_dict(pre_trained['decoder'])
+    for param in decoder.parameters():
+        param.requires_grad = False
 
 mdl_params = rend_params + dec_params
-opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3 * 1.68 / 0.01},
+opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3 * 3 * 1.68/0.1},
                         {'params': mdl_params}], lr=1e-3, betas=(0.0, 0.9))
+# import ipdb;ipdb.set_trace()
+# opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3},
+#                         {'params': mdl_params}], lr=1e-3, betas=(0.0, 0.9))
 # opt = torch.optim.SGD(allparams, lr=1e-3,)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', factor=0.25, patience=300, verbose=True,
                                                        threshold=1e-3)
@@ -104,6 +125,7 @@ criterion = torch.nn.MSELoss()
 axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
 pbar = tqdm.tqdm(range(train_itr))
 losses = []
+best_psnr = 0
 for i in pbar:
 
     gt_img, cond = get_batch(vid_vols=vid_vols, device=device)
@@ -123,8 +145,15 @@ for i in pbar:
     opt.step()
     opt.zero_grad()
     losses.append(loss.item())
-    pbar.set_description(f'loss: {np.mean(losses[-10:]):0.6f}, PSNR: {10*np.log10(2/np.mean(losses[-10:])):0.2f}, '
-                         f'planes.std: {planes.std().item():0.5f}')
+    psnr = 10*np.log10(2/np.mean(losses[-10:]))
+    if best_psnr < psnr:
+        best_psnr = psnr
+        torch.save({'renderer': renderer.state_dict(), 'decoder': decoder.state_dict()},
+                   os.path.join(out_dir, 'rend_and_dec.pytorch'))
+
+    pbar.set_description(f'loss: {np.mean(losses[-10:]):0.6f}, PSNR: {psnr:0.2f}, PSNR_best:{best_psnr:0.2f}, '
+                         f'planes.std: {planes[0, 0, 0].std().item():0.5f}, '
+                         f'planes.mean: {planes[0, 0, 0].mean().item():0.5f}')
     scheduler.step(np.mean(losses[-10:]))
 
     if i % 200 == 0:
