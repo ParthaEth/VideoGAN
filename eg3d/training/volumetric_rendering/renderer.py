@@ -54,9 +54,20 @@ def project_onto_planes(planes, coordinates):
     """
     N, M, C = coordinates.shape
     n_planes, _, _ = planes.shape
+
+    planes_x = planes[:, :, 0] / torch.linalg.norm(planes[:, :, 0], dim=-1, keepdim=True)
+    planes_y = planes[:, :, 1] / torch.linalg.norm(planes[:, :, 1], dim=-1, keepdim=True)
+    planes_y_perp = planes_y - planes_x * (torch.bmm(planes_x[:, None, :], planes_y[..., None]))[:, :, 0]
+    planes_y_perp = planes_y_perp / torch.linalg.norm(planes_y_perp, dim=1, keepdim=True)
+    planes_z = torch.cross(planes_x, planes_y_perp)
+    orthogonalized_planes = torch.cat([planes_x[..., None], planes_y_perp[..., None], planes_z[..., None]], dim=-1)
+
     coordinates = coordinates.unsqueeze(1).expand(-1, n_planes, -1, -1).reshape(N*n_planes, M, 3)
     cod_norms = torch.linalg.norm(coordinates, dim=-1, keepdim=True)
-    inv_planes = torch.linalg.inv(planes).unsqueeze(0).expand(N, -1, -1, -1).reshape(N*n_planes, 3, 3)
+    inv_planes = torch.linalg.inv(orthogonalized_planes).unsqueeze(0).expand(N, -1, -1, -1).reshape(N*n_planes, 3, 3)
+
+    # import ipdb; ipdb.set_trace()
+
     projections = torch.bmm(coordinates, inv_planes)
     proj_norm = torch.linalg.norm(projections, dim=-1, keepdim=True)
     projections = projections * (cod_norms / proj_norm)

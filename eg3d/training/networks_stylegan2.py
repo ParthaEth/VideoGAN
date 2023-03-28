@@ -331,10 +331,8 @@ class SynthesisLayer(torch.nn.Module):
 
         act_gain = self.act_gain * gain
         act_clamp = self.conv_clamp * gain if self.conv_clamp is not None else None
-        if self.activation.lower().find('sin') >= 0:
-            omega = float(self.activation.split('_')[1])
-            # import ipdb; ipdb.set_trace()
-            x = torch.sin(x * omega + self.bias.to(x.dtype).reshape([-1 if i == 1 else 1 for i in range(x.ndim)]))
+        if isinstance(self.activation, torch.nn.Module):
+            x = self.activation(x + self.bias.to(x.dtype).reshape([-1 if i == 1 else 1 for i in range(x.ndim)]))
         else:
             x = bias_act.bias_act(x, self.bias.to(x.dtype), act=self.activation, gain=act_gain, clamp=act_clamp)
         return x

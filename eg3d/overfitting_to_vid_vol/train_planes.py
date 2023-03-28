@@ -75,7 +75,7 @@ plane_h = plane_w = 128
 rendering_res = 256
 plane_c = 32
 num_planes = 12
-b_size = 20
+b_size = 3
 load_saved = False
 out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
 os.makedirs(out_dir, exist_ok=True)
@@ -149,7 +149,7 @@ for i in pbar:
     if best_psnr < psnr:
         best_psnr = psnr
         torch.save({'renderer': renderer.state_dict(), 'decoder': decoder.state_dict()},
-                   os.path.join(out_dir, 'rend_and_dec.pytorch'))
+                   os.path.join(out_dir, 'rend_and_dec_not_useful.pytorch'))
 
     pbar.set_description(f'loss: {np.mean(losses[-10:]):0.6f}, PSNR: {psnr:0.2f}, PSNR_best:{best_psnr:0.2f}, '
                          f'planes.std: {planes[0, 0, 0].std().item():0.5f}, '

@@ -180,6 +180,15 @@ class ScaleForwardIdentityBackward(torch.autograd.Function):
          return grad_output, None
 
 
+class Sin(torch.nn.Module):
+    def __init__(self, omega):
+        super().__init__()
+        self.omega = torch.nn.Parameter(torch.tensor(omega, dtype=torch.float32))
+
+    def forward(self, x):
+        return torch.sin(self.omega * x)
+
+
 class OSGDecoder(torch.nn.Module):
     def __init__(self, n_features, options):
         super().__init__()
@@ -188,18 +197,18 @@ class OSGDecoder(torch.nn.Module):
 
         self.net = torch.nn.ModuleList([
             SynthesisBlock(in_channels=n_features * 3, out_channels=4*n_features, w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1, activation=['sin_10', 'sin_10'],
+                           img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(10),
                            kernel_size=1, architecture='orig',
                            ),
             SynthesisBlock(in_channels=4*n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
-                           activation=['sin_1', 'sin_1'],
+                           activation=Sin(1.0),
                            architecture='resnet'),
             # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
             #                img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
             #                architecture='skip'),
             SynthesisBlock(in_channels=n_features, out_channels=options['decoder_output_dim'], w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1, activation='sin_1', kernel_size=1,
+                           img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(1), kernel_size=1,
                            architecture='skip')
         ]
         )
@@ -229,8 +238,8 @@ class OSGDecoder(torch.nn.Module):
             else:
                 x, img = layer(x, img, ws[:, :2, :])
 
-        img = img.view(batch_size, planes//3, 3, num_pts).mean(dim=1).permute(0, 2, 1)
-        x = x.view(batch_size, planes//3, -1, num_pts).mean(dim=1).permute(0, 2, 1)
+        img = img.view(batch_size, planes//3, 3, num_pts).sum(dim=1).permute(0, 2, 1)
+        x = x.view(batch_size, planes//3, -1, num_pts).sum(dim=1).permute(0, 2, 1)
         # # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
         # rgb = torch.sigmoid(x[..., 1:]) * 2 - 1
         return {'rgb': img, 'features': x}
