@@ -53,10 +53,10 @@ class TriPlaneGenerator(torch.nn.Module):
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
                                    'decoder_output_dim': 32})
 
-        pre_trained = torch.load('/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
-                                 'rend_and_dec_31db.pytorch')
-        self.renderer.load_state_dict(pre_trained['renderer'])
-        self.decoder.load_state_dict(pre_trained['decoder'])
+        # pre_trained = torch.load('/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
+        #                          'rend_and_dec_31db.pytorch')
+        # self.renderer.load_state_dict(pre_trained['renderer'])
+        # self.decoder.load_state_dict(pre_trained['decoder'])
 
         self.rendering_kwargs = rendering_kwargs
     
@@ -68,7 +68,8 @@ class TriPlaneGenerator(torch.nn.Module):
         return self.backbone.mapping(z, c * self.rendering_kwargs.get('c_scale', 0), truncation_psi=truncation_psi,
                                      truncation_cutoff=truncation_cutoff, update_emas=update_emas)
 
-    def synthesis(self, ws, c, neural_rendering_resolution=None, update_emas=False, cache_backbone=False, use_cached_backbone=False, **synthesis_kwargs):
+    def synthesis(self, ws, c, neural_rendering_resolution=None, update_emas=False, cache_backbone=False,
+                  use_cached_backbone=False, **synthesis_kwargs):
         # cam2world_matrix = c[:, :16].view(-1, 4, 4)
         # intrinsics = c[:, 16:25].view(-1, 3, 3)
 
@@ -90,11 +91,13 @@ class TriPlaneGenerator(torch.nn.Module):
         if cache_backbone:
             self._last_planes = planes
 
-        # print(f'plane_std: {planes[0,0,0].std().item():0.5f}')
+        torch.save(planes, '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/eg3d_init_planes.pth')
+        import ipdb; ipdb.set_trace()
 
         # Reshape output into three 32-channel planes
         b_size = len(planes)
         planes = planes.view(b_size, self.num_planes, self.plane_features, planes.shape[-2], planes.shape[-1])
+        planes[1, 0].std()
 
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
@@ -217,9 +220,13 @@ class OSGDecoder(torch.nn.Module):
             #                architecture='skip'),
             SynthesisBlock(in_channels=n_features, out_channels=options['decoder_output_dim'], w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(1), kernel_size=1,
-                           architecture='skip')
-        ]
-        )
+                           architecture='skip')])
+
+        # self.modulator = torch.nn.ModuleList(
+        #     [Conv2dLayer(in_channels=n_features * 3, out_channels=4*n_features, kernel_size=1,  activation='relu'),
+        #      Conv2dLayer(in_channels=4*n_features, out_channels=n_features, kernel_size=1,  activation='relu'),
+        #      Conv2dLayer(in_channels=n_features, out_channels=options['decoder_output_dim'], kernel_size=1,
+        #                  activation='relu'),])
 
     def forward(self, sampled_features, rendering_res):
         # Aggregate features
@@ -230,24 +237,28 @@ class OSGDecoder(torch.nn.Module):
         x = sampled_features.permute(0, 1, 3, 2).reshape(batch_size * planes//3, 3 * pln_chnls, rendering_res,
                                                          rendering_res)
         # x = x / 0.23730 * 0.01/4
-        x = x * 0.05952380952380953 / 3
+        # x = x * 0.05952380952380953 / 3
+        synth_h = x #* 0.05952380952380953 / 3
         # x = ScaleForwardIdentityBackward.apply(x, 0.005952380952380953)
         # import ipdb; ipdb.set_trace()
         img = None
-        for i, layer in enumerate(self.synth_net):
-            layer.resolution = rendering_res
+        for i, synth_layer in enumerate(self.synth_net):
+            synth_layer.resolution = rendering_res
+            # mod_layer = self.modulator[i]
             # if i == 2:
             #     skip = x
             # elif i == len(self.net) - 3:
             #     x = x + skip
             # import ipdb; ipdb.set_trace()
-            if layer.architecture == 'skip':
-                x, img = layer(x, img, ws)
+            if synth_layer.architecture == 'skip':
+                synth_h, img = synth_layer(synth_h, img, ws)
             else:
-                x, img = layer(x, img, ws[:, :2, :])
+                synth_h, img = synth_layer(synth_h, img, ws[:, :2, :])
+            # x = mod_layer(x)
+            # synth_h = synth_h * x
 
         img = img.view(batch_size, planes//3, 3, num_pts).sum(dim=1).permute(0, 2, 1)
-        x = x.view(batch_size, planes//3, -1, num_pts).sum(dim=1).permute(0, 2, 1)
+        synth_h = synth_h.view(batch_size, planes//3, -1, num_pts).sum(dim=1).permute(0, 2, 1)
         # # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
         # rgb = torch.sigmoid(x[..., 1:]) * 2 - 1
-        return {'rgb': img, 'features': x}
+        return {'rgb': img, 'features': synth_h}

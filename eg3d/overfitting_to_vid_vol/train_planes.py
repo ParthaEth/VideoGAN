@@ -80,8 +80,8 @@ load_saved = False
 out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
 os.makedirs(out_dir, exist_ok=True)
 
-# planes = torch.tanh(torch.randn(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)) * 0.01
-planes = torch.ones(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device) * 0.168 * 3
+planes = torch.tanh(torch.randn(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)) * 0.001
+# planes = torch.ones(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device) * 0.168 * 3
 planes.requires_grad = True
 
 if load_saved:
@@ -111,7 +111,7 @@ if load_saved:
         param.requires_grad = False
 
 mdl_params = rend_params + dec_params
-opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3 * 3 * 1.68/0.1},
+opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3},
                         {'params': mdl_params}], lr=1e-3, betas=(0.0, 0.9))
 # import ipdb;ipdb.set_trace()
 # opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3},
@@ -145,7 +145,7 @@ for i in pbar:
     opt.step()
     opt.zero_grad()
     losses.append(loss.item())
-    psnr = 10*np.log10(2/np.mean(losses[-10:]))
+    psnr = 10*np.log10(4/np.mean(losses[-10:]))
     if best_psnr < psnr:
         best_psnr = psnr
         torch.save({'renderer': renderer.state_dict(), 'decoder': decoder.state_dict()},
