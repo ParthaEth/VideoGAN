@@ -52,6 +52,12 @@ class TriPlaneGenerator(torch.nn.Module):
         self.decoder = OSGDecoder(self.plane_features,
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
                                    'decoder_output_dim': 32})
+
+        pre_trained = torch.load('/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
+                                 'rend_and_dec_31db.pytorch')
+        self.renderer.load_state_dict(pre_trained['renderer'])
+        self.decoder.load_state_dict(pre_trained['decoder'])
+
         self.rendering_kwargs = rendering_kwargs
     
         self._last_planes = None
@@ -181,9 +187,12 @@ class ScaleForwardIdentityBackward(torch.autograd.Function):
 
 
 class Sin(torch.nn.Module):
-    def __init__(self, omega):
+    def __init__(self, omega, optimizable_freq=False):
         super().__init__()
-        self.omega = torch.nn.Parameter(torch.tensor(omega, dtype=torch.float32))
+        if optimizable_freq:
+            self.omega = torch.nn.Parameter(torch.tensor(omega, dtype=torch.float32))
+        else:
+            self.omega = omega
 
     def forward(self, x):
         return torch.sin(self.omega * x)
@@ -195,11 +204,10 @@ class OSGDecoder(torch.nn.Module):
         self.hidden_dim = 64
         # self.rend_res = options['rend_res']
 
-        self.net = torch.nn.ModuleList([
+        self.synth_net = torch.nn.ModuleList([
             SynthesisBlock(in_channels=n_features * 3, out_channels=4*n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(10),
-                           kernel_size=1, architecture='orig',
-                           ),
+                           kernel_size=1, architecture='orig',),
             SynthesisBlock(in_channels=4*n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
                            activation=Sin(1.0),
@@ -226,7 +234,7 @@ class OSGDecoder(torch.nn.Module):
         # x = ScaleForwardIdentityBackward.apply(x, 0.005952380952380953)
         # import ipdb; ipdb.set_trace()
         img = None
-        for i, layer in enumerate(self.net):
+        for i, layer in enumerate(self.synth_net):
             layer.resolution = rendering_res
             # if i == 2:
             #     skip = x
