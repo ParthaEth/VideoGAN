@@ -237,13 +237,14 @@ def training_loop(
             opt_kwargs.betas = [beta ** mb_ratio for beta in opt_kwargs.betas]
             if name == 'G':
                 opt = dnnlib.util.construct_class_by_name(
-                    [{'params': module.renderer.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('renderer_lr_mult', 1.0)},
+                    [{'params': module.renderer.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('renderer_lr_mult', 1.0)/mb_ratio},
                      {'params': module.backbone.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('backbone_lr_mult', 1.0)},
                      {'params': module.superresolution.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('superresolution_lr_mult', 1.0)},
-                     {'params': module.decoder.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('decoder_lr_mult', 1.0)},
+                     {'params': module.decoder.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('decoder_lr_mult', 1.0)/mb_ratio},
                     ],
                     lr=opt_kwargs['lr'], betas=opt_kwargs['betas'], eps=opt_kwargs['eps'],
                     class_name=opt_kwargs['class_name'],)  # subclass of torch.optim.Optimizer
+                # print(f'decoder lr: {opt_kwargs["lr"] * opt_kwargs.get("decoder_lr_mult", 1.0)}')
                 #TODO(Partha): Check if all parameters have been added!
             else:
                 opt = dnnlib.util.construct_class_by_name(module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer

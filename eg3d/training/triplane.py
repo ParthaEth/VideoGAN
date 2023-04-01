@@ -91,13 +91,11 @@ class TriPlaneGenerator(torch.nn.Module):
         if cache_backbone:
             self._last_planes = planes
 
-        torch.save(planes, '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/eg3d_init_planes.pth')
-        import ipdb; ipdb.set_trace()
-
         # Reshape output into three 32-channel planes
         b_size = len(planes)
         planes = planes.view(b_size, self.num_planes, self.plane_features, planes.shape[-2], planes.shape[-1])
-        planes[1, 0].std()
+        # import ipdb; ipdb.set_trace()
+        # planes[1, 0].std()
 
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
@@ -209,17 +207,17 @@ class OSGDecoder(torch.nn.Module):
 
         self.synth_net = torch.nn.ModuleList([
             SynthesisBlock(in_channels=n_features * 3, out_channels=4*n_features, w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(10),
+                           img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(413, optimizable_freq=True),
                            kernel_size=1, architecture='orig',),
             SynthesisBlock(in_channels=4*n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
-                           activation=Sin(1.0),
+                           activation=Sin(41.3, optimizable_freq=True),
                            architecture='resnet'),
             # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
             #                img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
             #                architecture='skip'),
             SynthesisBlock(in_channels=n_features, out_channels=options['decoder_output_dim'], w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(1), kernel_size=1,
+                           img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(41.3, optimizable_freq=True), kernel_size=1,
                            architecture='skip')])
 
         # self.modulator = torch.nn.ModuleList(

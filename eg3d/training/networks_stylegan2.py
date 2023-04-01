@@ -62,7 +62,7 @@ def modulated_conv2d(
         w = weight.unsqueeze(0) # [NOIkk]
         w = w * styles.reshape(batch_size, 1, -1, 1, 1)  # [NOIkk]
     if demodulate:
-        dcoefs = (w.square().sum(dim=[2, 3, 4]) + 1e-8).rsqrt() # * 0.1  # [NO]
+        dcoefs = (w.square().sum(dim=[2, 3, 4]) + 1e-8).rsqrt() * 0.1/7  # [NO]
     if demodulate and fused_modconv:
         w = w * dcoefs.reshape(batch_size, -1, 1, 1, 1)  # [NOIkk]
 
@@ -305,7 +305,7 @@ class SynthesisLayer(torch.nn.Module):
         self.affine = FullyConnectedLayer(w_dim, in_channels, bias_init=1)
         memory_format = torch.channels_last if channels_last else torch.contiguous_format
         self.weight = torch.nn.Parameter(
-            0.1 * torch.randn([out_channels, in_channels, kernel_size, kernel_size]).to(memory_format=memory_format))
+            torch.randn([out_channels, in_channels, kernel_size, kernel_size]).to(memory_format=memory_format))
         if use_noise:
             self.register_buffer('noise_const', torch.randn([resolution, resolution]))
             self.noise_strength = torch.nn.Parameter(torch.zeros([]))
@@ -329,12 +329,13 @@ class SynthesisLayer(torch.nn.Module):
         flip_weight = (self.up == 1) # slightly faster
         # import ipdb; ipdb.set_trace()
         x = modulated_conv2d(x=x, weight=self.weight, styles=styles, noise=noise, up=self.up, padding=self.padding,
-                             resample_filter=self.resample_filter, flip_weight=flip_weight, fused_modconv=fused_modconv)
+                             resample_filter=self.resample_filter, flip_weight=flip_weight,
+                             fused_modconv=fused_modconv,)  # TODO(Partha): remove the demodulate=False
 
         act_gain = self.act_gain * gain
         act_clamp = self.conv_clamp * gain if self.conv_clamp is not None else None
         if isinstance(self.activation, torch.nn.Module):
-            x = self.activation(x + self.bias.to(x.dtype).reshape([-1 if i == 1 else 1 for i in range(x.ndim)]))
+            x = self.activation(x + (0.1/7) * self.bias.to(x.dtype).reshape([-1 if i == 1 else 1 for i in range(x.ndim)]))
         else:
             x = bias_act.bias_act(x, self.bias.to(x.dtype), act=self.activation, gain=act_gain, clamp=act_clamp)
         return x
