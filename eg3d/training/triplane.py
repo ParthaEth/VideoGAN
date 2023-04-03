@@ -38,12 +38,12 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
         self.plane_features = 32
-        self.num_planes = 12
+        self.num_planes = 6
         self.renderer = AxisAligndProjectionRenderer(return_video, self.num_planes)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
-        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
+        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=64,
                                           img_channels=self.plane_features * self.num_planes,
                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
@@ -53,13 +53,17 @@ class TriPlaneGenerator(torch.nn.Module):
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
                                    'decoder_output_dim': 32})
 
-        # pre_trained = torch.load('/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
-        #                          'rend_and_dec_31db.pytorch')
-        # self.renderer.load_state_dict(pre_trained['renderer'])
-        # self.decoder.load_state_dict(pre_trained['decoder'])
+        ########################### Load pre-trained ###################################################
+        pre_trained = torch.load('/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
+                                 'rend_and_dec_good.pytorch')
+        self.renderer.load_state_dict(pre_trained['renderer'])
+        for param in self.renderer.parameters():
+            param.requires_grad = False
+
+        self.decoder.load_state_dict(pre_trained['decoder'])
+        ########################### Load pre-trained ###################################################
 
         self.rendering_kwargs = rendering_kwargs
-    
         self._last_planes = None
     
     def mapping(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False):
@@ -91,8 +95,8 @@ class TriPlaneGenerator(torch.nn.Module):
         if cache_backbone:
             self._last_planes = planes
 
-        torch.save(planes, '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/eg3d_init_planes.pth')
-        import ipdb; ipdb.set_trace()
+        # torch.save(planes, '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/eg3d_init_planes.pth')
+        # import ipdb; ipdb.set_trace()
 
         # Reshape output into three 32-channel planes
         b_size = len(planes)
@@ -208,19 +212,21 @@ class OSGDecoder(torch.nn.Module):
         # self.rend_res = options['rend_res']
 
         self.synth_net = torch.nn.ModuleList([
-            SynthesisBlock(in_channels=n_features * 3, out_channels=4*n_features, w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(10),
+            SynthesisBlock(in_channels=n_features * 3, out_channels=8 * n_features, w_dim=4, resolution=None,
+                           img_channels=3, use_noise=False, is_last=False, up=1,
+                           activation=Sin(0.5),
                            kernel_size=1, architecture='orig',),
-            SynthesisBlock(in_channels=4*n_features, out_channels=n_features, w_dim=4, resolution=None,
+            SynthesisBlock(in_channels=8 * n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
-                           activation=Sin(1.0),
+                           activation=Sin(1),
                            architecture='resnet'),
             # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
             #                img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
             #                architecture='skip'),
             SynthesisBlock(in_channels=n_features, out_channels=options['decoder_output_dim'], w_dim=4, resolution=None,
-                           img_channels=3, use_noise=False, is_last=False, up=1, activation=Sin(1), kernel_size=1,
-                           architecture='skip')])
+                           img_channels=3, use_noise=False, is_last=False, up=1,
+                           activation=Sin(1),
+                           kernel_size=1, architecture='skip')])
 
         # self.modulator = torch.nn.ModuleList(
         #     [Conv2dLayer(in_channels=n_features * 3, out_channels=4*n_features, kernel_size=1,  activation='relu'),
@@ -228,17 +234,19 @@ class OSGDecoder(torch.nn.Module):
         #      Conv2dLayer(in_channels=n_features, out_channels=options['decoder_output_dim'], kernel_size=1,
         #                  activation='relu'),])
 
-    def forward(self, sampled_features, rendering_res):
+    def forward(self, sampled_features, coordinates, rendering_res):
         # Aggregate features
         # print(f'feature:{sampled_features[0, :, 100, :4]}')
         # sampled_features = sampled_features.mean(1, keepdim=True)
         batch_size, planes, num_pts, pln_chnls = sampled_features.shape
         ws = torch.zeros((batch_size * planes//3, 3, 4), dtype=sampled_features.dtype, device=sampled_features.device)
+        # cods = coordinates.permute(0, 2, 1).reshape(batch_size, 3, rendering_res, rendering_res)
         x = sampled_features.permute(0, 1, 3, 2).reshape(batch_size * planes//3, 3 * pln_chnls, rendering_res,
                                                          rendering_res)
+        # x = x * cods.repeat(planes//3, pln_chnls, 1, 1)
         # x = x / 0.23730 * 0.01/4
         # x = x * 0.05952380952380953 / 3
-        synth_h = x #* 0.05952380952380953 / 3
+        synth_h = x # * 0.01 / 1.9
         # x = ScaleForwardIdentityBackward.apply(x, 0.005952380952380953)
         # import ipdb; ipdb.set_trace()
         img = None

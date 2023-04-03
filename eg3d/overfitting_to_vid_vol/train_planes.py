@@ -71,16 +71,18 @@ torch.manual_seed(1)
 random.seed(1)
 np.random.seed(1)
 device = 'cuda'
-plane_h = plane_w = 128
-rendering_res = 256
+plane_h = plane_w = 64
+rendering_res = 64
 plane_c = 32
-num_planes = 12
-b_size = 3
+num_planes = 6
+b_size = 60
+toral_batches = 1
 load_saved = False
 out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
 os.makedirs(out_dir, exist_ok=True)
 
-planes = torch.tanh(torch.randn(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)) * 0.001
+planes = torch.clip(torch.randn(b_size*toral_batches, num_planes, plane_c, plane_h, plane_w,
+                                dtype=torch.float32), min=-3, max=3).to(device)
 # planes = torch.ones(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device) * 0.168 * 3
 planes.requires_grad = True
 
@@ -96,12 +98,13 @@ if load_saved:
 
 img_dir = '/is/cluster/fast/pghosh/datasets/ffhq/256X256/'
 vid_vols = []
-img_offset = 100
-for img_id in range(b_size):
+img_offset = 200
+for img_id in range(b_size * toral_batches):
     img_file = os.path.join(img_dir, f'{img_offset + img_id:05d}.png')
 
     # shutil.copyfile(img_file, os.path.join(out_dir, 'original_img.png'))
     vid_vols.append(VidFromImg(img_file, rendering_res))
+vid_vols = np.array(vid_vols)
 
 decoder = OSGDecoder(plane_c, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
 dec_params = [param for param in decoder.parameters()]
@@ -111,7 +114,7 @@ if load_saved:
         param.requires_grad = False
 
 mdl_params = rend_params + dec_params
-opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3},
+opt = torch.optim.Adam([{'params': planes, 'lr': 1},
                         {'params': mdl_params}], lr=1e-3, betas=(0.0, 0.9))
 # import ipdb;ipdb.set_trace()
 # opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3},
@@ -127,9 +130,12 @@ pbar = tqdm.tqdm(range(train_itr))
 losses = []
 best_psnr = 0
 for i in pbar:
-
-    gt_img, cond = get_batch(vid_vols=vid_vols, device=device)
-    feature_samples, _ = renderer(planes, decoder, cond, None, {'density_noise': 0, 'box_warp': 0.999,
+    # print(dec_params[0][0, 0, 0])
+    batch_idx = np.random.randint(0, toral_batches * b_size, b_size)
+    # import ipdb; ipdb.set_trace()
+    gt_img, cond = get_batch(vid_vols=vid_vols[batch_idx], device=device)
+    planes_batch = planes[batch_idx].to(device)
+    feature_samples, _ = renderer(planes_batch, decoder, cond, None, {'density_noise': 0, 'box_warp': 0.999,
                                                                 'neural_rendering_resolution': rendering_res})
 
     # Reshape into 'raw' image
@@ -152,13 +158,13 @@ for i in pbar:
                    os.path.join(out_dir, 'rend_and_dec_not_useful.pytorch'))
 
     pbar.set_description(f'loss: {np.mean(losses[-10:]):0.6f}, PSNR: {psnr:0.2f}, PSNR_best:{best_psnr:0.2f}, '
-                         f'planes.std: {planes[0, 0, 0].std().item():0.5f}, '
-                         f'planes.mean: {planes[0, 0, 0].mean().item():0.5f}')
+                         f'planes.std: {planes_batch[0, 0, 0].std().item():0.5f}, '
+                         f'planes.mean: {planes_batch[0, 0, 0].mean().item():0.5f}')
     scheduler.step(np.mean(losses[-10:]))
 
     if i % 200 == 0:
         cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.9], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
-        feature_samples, _ = renderer(planes[:cond.shape[0]], decoder, cond, None,
+        feature_samples, _ = renderer(planes_batch[:cond.shape[0]], decoder, cond, None,
                                      {'density_noise': 0, 'box_warp': 0.999,
                                       'neural_rendering_resolution': rendering_res})
         feature_image = feature_samples.permute(0, 2, 1).reshape(cond.shape[0], feature_samples.shape[-1],

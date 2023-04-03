@@ -174,7 +174,8 @@ class ImportanceRenderer(torch.nn.Module):
         sampled_features = sample_from_planes(self.plane_axes, planes, sample_coordinates, padding_mode='zeros',
                                               box_warp=options['box_warp'])
 
-        out = decoder(sampled_features, rendering_res=options['neural_rendering_resolution'])
+        out = decoder(sampled_features, coordinates=sample_coordinates,
+                      rendering_res=options['neural_rendering_resolution'])
         if options.get('density_noise', 0) > 0:
             out['sigma'] += torch.randn_like(out['sigma']) * options['density_noise']
         return out
@@ -298,7 +299,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         self.plane_axes = self.plane_axes.to(device)
         #
 
-        batch_size, _, planes_ch, _, _ = planes.shape # get batch size! ray_origins.shape
+        batch_size, _, planes_ch, _, _ = planes.shape  # get batch size! ray_origins.shape
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)

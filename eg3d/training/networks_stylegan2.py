@@ -305,7 +305,7 @@ class SynthesisLayer(torch.nn.Module):
         self.affine = FullyConnectedLayer(w_dim, in_channels, bias_init=1)
         memory_format = torch.channels_last if channels_last else torch.contiguous_format
         self.weight = torch.nn.Parameter(
-            0.1 * torch.randn([out_channels, in_channels, kernel_size, kernel_size]).to(memory_format=memory_format))
+            torch.randn([out_channels, in_channels, kernel_size, kernel_size]).to(memory_format=memory_format))
         if use_noise:
             self.register_buffer('noise_const', torch.randn([resolution, resolution]))
             self.noise_strength = torch.nn.Parameter(torch.zeros([]))
