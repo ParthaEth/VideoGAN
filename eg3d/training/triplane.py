@@ -9,6 +9,8 @@
 # its affiliates is strictly prohibited.
 
 import torch
+import torchvision.transforms
+
 from torch_utils import persistence
 from training.networks_stylegan2 import Generator as StyleGAN2Backbone
 from training.volumetric_rendering.renderer import ImportanceRenderer, AxisAligndProjectionRenderer
@@ -54,35 +56,42 @@ class TriPlaneGenerator(torch.nn.Module):
                                    'decoder_output_dim': 32})
 
         ########################### Load pre-trained ###################################################
-        pre_trained = torch.load('/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
-                                 'rend_and_dec_good.pytorch')
-        self.renderer.load_state_dict(pre_trained['renderer'])
-        for param in self.renderer.parameters():
-            param.requires_grad = False
-
-        self.decoder.load_state_dict(pre_trained['decoder'])
-        ########################### Load pre-trained ###################################################
+        # pre_trained = torch.load('/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
+        #                          'rend_and_dec_256_rend.pytorch')
+        # self.renderer.load_state_dict(pre_trained['renderer'])
+        # # for param in self.renderer.parameters():
+        # #     param.requires_grad = False
+        #
+        # self.decoder.load_state_dict(pre_trained['decoder'])
+        # # for param in self.renderer.parameters():
+        # #     param.requires_grad = False
+        ########################### Load pre-trained ################################################### 
 
         self.rendering_kwargs = rendering_kwargs
         self._last_planes = None
+        self.downscale4x = torchvision.transforms.Resize(64, antialias=True)
     
     def mapping(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False):
         if self.rendering_kwargs['c_gen_conditioning_zero']:
-                c = torch.zeros_like(c)
-        return self.backbone.mapping(z, c * self.rendering_kwargs.get('c_scale', 0), truncation_psi=truncation_psi,
+                cond = torch.zeros_like(c)
+        else:
+            cond = c.clone()
+            # cond[:, :4] *= 0
+        # import ipdb; ipdb.set_trace()
+        return self.backbone.mapping(z, cond * self.rendering_kwargs.get('c_scale', 0), truncation_psi=truncation_psi,
                                      truncation_cutoff=truncation_cutoff, update_emas=update_emas)
 
     def synthesis(self, ws, c, neural_rendering_resolution=None, update_emas=False, cache_backbone=False,
                   use_cached_backbone=False, **synthesis_kwargs):
         # cam2world_matrix = c[:, :16].view(-1, 4, 4)
         # intrinsics = c[:, 16:25].view(-1, 3, 3)
-
+        # import ipdb; ipdb.set_trace()
         if neural_rendering_resolution is None:
             neural_rendering_resolution = self.neural_rendering_resolution
         else:
             self.neural_rendering_resolution = neural_rendering_resolution
 
-        self.rendering_kwargs['neural_rendering_resolution'] = self.neural_rendering_resolution
+        self.rendering_kwargs['neural_rendering_resolution'] = neural_rendering_resolution
         # Create a batch of rays for volume rendering
         # ray_origins, ray_directions = self.ray_sampler(cam2world_matrix, intrinsics, neural_rendering_resolution)
 
@@ -119,7 +128,10 @@ class TriPlaneGenerator(torch.nn.Module):
             rgb_image, feature_image, ws,
             noise_mode=self.rendering_kwargs['superresolution_noise_mode'],
             **{k:synthesis_kwargs[k] for k in synthesis_kwargs.keys() if k != 'noise_mode'})
+        # import ipdb; ipdb.set_trace()
+
         # sr_image = rgb_image
+        # rgb_image = self.downscale4x(sr_image)
 
         return {'image': sr_image, 'image_raw': rgb_image, 'image_depth': None}
     
@@ -150,36 +162,6 @@ class TriPlaneGenerator(torch.nn.Module):
 
 
 from training.networks_stylegan2 import Conv2dLayer, SynthesisBlock
-
-# class OSGDecoder(torch.nn.Module):
-#     def __init__(self, n_features, options):
-#         super().__init__()
-#         self.hidden_dim = 64
-#
-#         self.net = torch.nn.Sequential(
-#             FullyConnectedLayer(n_features * 3, 2*self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
-#             torch.nn.Softplus(),
-#             FullyConnectedLayer(2*self.hidden_dim, self.hidden_dim, lr_multiplier=options['decoder_lr_mul']),
-#             torch.nn.Softplus(),
-#             FullyConnectedLayer(self.hidden_dim, 1 + options['decoder_output_dim'],
-#                                 lr_multiplier=options['decoder_lr_mul'])
-#         )
-#
-#     def forward(self, sampled_features, ray_directions):
-#         # Aggregate features
-#         # print(f'feature:{sampled_features[0, :, 100, :4]}')
-#         # sampled_features = sampled_features.mean(1, keepdim=True)
-#         N, planes, M, C = sampled_features.shape
-#         x = sampled_features.permute(0, 2, 3, 1).reshape(N*M, C*planes)
-#         x = self.net(x)
-#         x = x.view(N, M, -1)
-#         # rgb = torch.sigmoid(x[..., 1:])*(1 + 2*0.001) - 0.001 # Uses sigmoid clamping from MipNeRF
-#         rgb = torch.sigmoid(x[..., 1:]) * 2 - 1
-#         # rgb = x[..., 1:]
-#         sigma = x[..., 0:1] * 0  #Todo(Partha): Do better.
-#         # import ipdb; ipdb.set_trace()
-#         return {'rgb': rgb, 'sigma': sigma}
-
 
 class ScaleForwardIdentityBackward(torch.autograd.Function):
      @staticmethod
@@ -214,18 +196,18 @@ class OSGDecoder(torch.nn.Module):
         self.synth_net = torch.nn.ModuleList([
             SynthesisBlock(in_channels=n_features * 3, out_channels=8 * n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1,
-                           activation=Sin(0.5),
+                           activation='lrelu',
                            kernel_size=1, architecture='orig',),
             SynthesisBlock(in_channels=8 * n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
-                           activation=Sin(1),
+                           activation='lrelu',
                            architecture='resnet'),
             # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
             #                img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
             #                architecture='skip'),
             SynthesisBlock(in_channels=n_features, out_channels=options['decoder_output_dim'], w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1,
-                           activation=Sin(1),
+                           activation='lrelu',
                            kernel_size=1, architecture='skip')])
 
         # self.modulator = torch.nn.ModuleList(

@@ -119,8 +119,8 @@ class Dataset(torch.utils.data.Dataset):
         label = self.get_label(idx)
         if len(label) > 0:
             label[0:4] = aug_label
-            # if int(label[0]) != 2:
-            #     print(f'label: {label}')
+            # if not (int(label[2]) == 1 and label[3] < 2/256):
+            #     label[4:] *= 0
         return image.copy(), label
 
     def get_label(self, idx):
@@ -294,7 +294,7 @@ class VideoFolderDataset(Dataset):
             cnst_coordinate = 0
 
         # import ipdb; ipdb.set_trace()
-        lbl_cond = self.axis_dict[constant_axis] + [cnst_coordinate/resolution]
+        lbl_cond = self.axis_dict[constant_axis] + [cnst_coordinate/resolution, ]
         if constant_axis == 'x':
             image = vid_vol[:, cnst_coordinate, :, :]
         elif constant_axis == 'y':
@@ -316,7 +316,11 @@ class VideoFolderDataset(Dataset):
         # labels = [labels[fname.replace('\\', '/')] for fname in self._video_fnames]
         # labels = np.array(labels)
         # labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])[:, :4]
-        labels = np.zeros((len(self), 5), dtype=np.float32)
+        labels = np.zeros((len(self), 8), dtype=np.float32)
+        label_init = np.load(os.path.join(self._path, 'labels.npy'))
+        labels[:, 4:] = label_init[:len(self), :]
+        labels[:, 4:6] = labels[:, 4:6]/128 - 1
+        labels[:, 6:] = (labels[:, 6:] - 2) / 4 - 1
         if self.return_video:
             for i in range(len(labels)):
                 if self.fixed_time_frames:

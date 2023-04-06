@@ -1,0 +1,1 @@
+/home/pghosh/miniconda3/envs/video_gan/bin/python generate_bouncing_cubes.py -r $1 -dp True
