@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import tqdm
-root_dir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/init_cond'
+root_dir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/no_motion/init_cond'
 
 labels = []
 for file_id in tqdm.tqdm(range(70_000)):

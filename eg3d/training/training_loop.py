@@ -85,6 +85,10 @@ def save_image_grid(img, fname, drange, grid_size, labels=None):
     img = np.asarray(img, dtype=np.float32)
     img = (img - lo) * (255 / (hi - lo))
     img = np.rint(img).clip(0, 255).astype(np.uint8)
+    img[:, :, :, :2] = 255
+    img[:, :, :, -2:] = 255
+    img[:, :, -2:, :] = 255
+    img[:, :, :2, :] = 255
 
     gw, gh = grid_size
     _N, C, H, W = img.shape

@@ -9,8 +9,8 @@ def main(start_idx, end_idx, disable_progressbar):
     height = width = 256
     total_frames = 256
 
-    size_h = size_w = 40
-    outdir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/'
+    size_h = size_w = 80
+    outdir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/no_motion'
     if disable_progressbar:
         pbar = range(start_idx, end_idx)
     else:
@@ -18,7 +18,9 @@ def main(start_idx, end_idx, disable_progressbar):
     for vid_idx in pbar:
         x0 = np.random.randint(0, 256 - size_w)
         y0 = np.random.randint(0, 256 - size_h)
-        vel_p_frame = np.random.randint(2, 10, 2)  # velocity in pixels per frame
+        vel_p_frame = [0, 0]  # np.random.uniform(0.1, 3, 2)  # velocity in pixels per frame
+        color = tuple(np.random.randint(0, 255, 3))
+
         np.save(f'{outdir}/init_cond/{vid_idx:05d}.npy', np.array([x0, y0, vel_p_frame[0], vel_p_frame[1]]))
 
         video_out = imageio.get_writer(f'{outdir}/vids/{vid_idx:05d}.mp4', mode='I', fps=60, codec='libx264')
@@ -43,10 +45,10 @@ def main(start_idx, end_idx, disable_progressbar):
             else:
                 y0 = y_next
 
-            shape = [x0, y0, x0 + size_w, y0 + size_h]
+            shape = [int(x0), int(y0), int(x0 + size_w), int(y0 + size_h)]
             image = Image.new('RGB', (height, width))
             img1 = ImageDraw.Draw(image)
-            img1.rectangle(shape, fill=(255, 255, 255),)
+            img1.rectangle(shape, fill=color)
             # print((x0, y0))
             # plt.imshow(image)
             # plt.show()
