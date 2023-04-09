@@ -166,6 +166,9 @@ def generate_images(
         time_cod = torch.linspace(0, 1, G.img_resolution)
 
         batches = G.img_resolution // b_size
+        x0 = np.random.randint(0, 256 - 40)/256
+        y0 = np.random.randint(0, 256 - 40)/256
+        vel_p_frame = [0, 0]
         for b_id in range(batches):
 
             conditioning_params = torch.zeros((b_size, G.c_dim), dtype=z.dtype, device=device)
@@ -179,6 +182,8 @@ def generate_images(
                 raise ValueError(f'Undefined axis: {axis}. Valid options are x, y, or t')
 
             conditioning_params[:, 3] = time_cod[b_id*b_size:b_id*b_size + b_size]
+            conditioning_params[:, 4:] = \
+                torch.tensor([x0, y0, vel_p_frame[0], vel_p_frame[1]], dtype=torch.float32)[None, ...]
 
             # import ipdb; ipdb.set_trace()
 
