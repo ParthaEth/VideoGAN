@@ -201,7 +201,10 @@ def training_loop(
     # Print network summary tables.
     if rank == 0:
         z = torch.empty([batch_gpu, G.z_dim], device=device)
-        c = torch.empty([batch_gpu, G.c_dim], device=device)
+        c = torch.zeros([batch_gpu, G.c_dim], device=device)
+        c[:batch_gpu//3, 0] = 1
+        c[batch_gpu//3:2*batch_gpu//3, 1] = 1
+        c[2*batch_gpu//3:, 2] = 1
         img = misc.print_module_summary(G, [z, c])
         misc.print_module_summary(discriminator, [img, c])
 
@@ -304,6 +307,9 @@ def training_loop(
         progress_fn(0, total_kimg)
     while True:
 
+        # print('Intit diff check')
+        # misc.check_ddp_consistency(module, ignore_regex=r'.*\.[^.]+_(avg|ema)')
+
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
             phase_real_img, phase_real_c = next(training_set_iterator)
@@ -327,24 +333,32 @@ def training_loop(
             phase.module.requires_grad_(True)
             num_iter = 0
             for real_img, real_c, gen_z, gen_c in zip(phase_real_img, phase_real_c, phase_gen_z, phase_gen_c):
-                loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg)
+                loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c,
+                                          gain=phase.interval, cur_nimg=cur_nimg)
                 num_iter += 1
             phase.module.requires_grad_(False)
 
             # Update weights.
             with torch.autograd.profiler.record_function(phase.name + '_opt'):
-                params = [param for param in phase.module.parameters() if param.numel() > 0 and param.grad is not None]
+                params = [param for param in phase.module.parameters() if param.numel() > 0]
                 if len(params) > 0:
-                    flat = torch.cat([param.grad.flatten() for param in params])
+                    flat = []
+                    for param in params:
+                        if param.grad is None:
+                            param.grad = torch.zeros_like(param)
+                        flat.append(param.grad.flatten())
+                    flat = torch.cat(flat)
                     if num_gpus > 1:
+                        misc.nan_to_num(flat, nan=0, posinf=1e5, neginf=-1e5, out=flat)
                         torch.distributed.all_reduce(flat)
                         flat /= num_gpus
-                    misc.nan_to_num(flat, nan=0, posinf=1e5, neginf=-1e5, out=flat)
+
                     grads = flat.split([param.numel() for param in params])
                     for param, grad in zip(params, grads):
                         param.grad = grad.reshape(param.shape)
                 phase.opt.step()
-
+            # print(f'at {phase.name} diff check')
+            # misc.check_ddp_consistency(module, ignore_regex=r'.*\.[^.]+_(avg|ema)')
             # Phase done.
             if phase.end_event is not None:
                 phase.end_event.record(torch.cuda.current_stream(device))
@@ -362,6 +376,8 @@ def training_loop(
             G_ema.neural_rendering_resolution = G.neural_rendering_resolution
             G_ema.rendering_kwargs = G.rendering_kwargs.copy()
 
+        # print(f' after EMA diff check')
+        # misc.check_ddp_consistency(module, ignore_regex=r'.*\.[^.]+_(avg|ema)')
         # Update state.
         cur_nimg += batch_size
         batch_idx += 1

@@ -123,11 +123,27 @@ class TriPlaneGenerator(torch.nn.Module):
         feature_image = features.permute(0, 2, 1).reshape(b_size, features.shape[-1], H, W).contiguous()
         # depth_image = depth_samples.permute(0, 2, 1).reshape(b_size, 1, H, W)
 
+        # sr_image = torch.zeros((b_size, rgb_image.shape[1], self.img_resolution, self.img_resolution),
+        #                         device=rgb_image.device)
+        # xy_idx = (c[:, 2] == 1)
+        # rgb_xy_image = rgb_image[xy_idx]
+        rgb_xy_image = rgb_image
+        #
+        # if len(rgb_xy_image) > 0:
+        #     feature_xy_image = feature_image[xy_idx]
+        #     ws_xy = ws[xy_idx]
+
+        feature_xy_image = feature_image
+        ws_xy = ws
+
         # Run superresolution to get final image
-        sr_image = self.superresolution(
-            rgb_image, feature_image, ws,
+        sr_xy_image = self.superresolution(
+            rgb_xy_image, feature_xy_image, ws_xy,
             noise_mode=self.rendering_kwargs['superresolution_noise_mode'],
             **{k:synthesis_kwargs[k] for k in synthesis_kwargs.keys() if k != 'noise_mode'})
+        sr_image = sr_xy_image
+
+            # sr_image[xy_idx] = sr_xy_image
         # import ipdb; ipdb.set_trace()
 
         # sr_image = rgb_image

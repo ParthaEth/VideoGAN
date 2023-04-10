@@ -189,8 +189,13 @@ def check_ddp_consistency(module, ignore_regex=None):
         if tensor.is_floating_point():
             tensor = nan_to_num(tensor)
         other = tensor.clone()
-        torch.distributed.broadcast(tensor=other, src=0)
-        assert (tensor == other).all(), fullname
+        torch.distributed.broadcast(tensor=other, src=0)  # fetch the same tensor from GPU0 and compare
+
+        if not (tensor == other).all():
+            print(f'mismatch in {fullname}')
+            midx = (tensor != other)
+            print(f'tensor: {tensor[midx]}, other: {other[midx]}')
+            raise AssertionError(f'Tensor other missmatch')
 
 #----------------------------------------------------------------------------
 # Print summary table of module hierarchy.

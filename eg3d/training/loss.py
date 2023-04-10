@@ -273,11 +273,17 @@ class StyleGAN2Loss(Loss):
                 if phase in ['Dreg', 'Dboth']:
                     if self.dual_discrimination:
                         with torch.autograd.profiler.record_function('r1_grads'), conv2d_gradfix.no_weight_gradients():
-                            r1_grads = torch.autograd.grad(outputs=[real_logits.sum()], inputs=[real_img_tmp['image'], real_img_tmp['image_raw']], create_graph=True, only_inputs=True)
-                            r1_grads_image = r1_grads[0]
-                            r1_grads_image_raw = r1_grads[1]
-                        r1_penalty = r1_grads_image.square().sum([1,2,3]) + r1_grads_image_raw.square().sum([1,2,3])
-                    else: # single discrimination
+                            r1_grads = torch.autograd.grad(outputs=[real_logits.sum()],
+                                                           inputs=[real_img_tmp['image'], real_img_tmp['image_raw']],
+                                                           create_graph=True, only_inputs=True, allow_unused=True)
+
+                            r1_grads_image_pen = r1_grads_image_raw_pen = 0
+                            if r1_grads[0] is not None:
+                                r1_grads_image_pen = torch.nan_to_num(r1_grads[0]).square().sum([1,2,3])
+                            if r1_grads[1] is not None:
+                                r1_grads_image_raw_pen = torch.nan_to_num(r1_grads[1]).square().sum([1,2,3])
+                        r1_penalty = r1_grads_image_pen + r1_grads_image_raw_pen
+                    else:  # single discrimination
                         with torch.autograd.profiler.record_function('r1_grads'), conv2d_gradfix.no_weight_gradients():
                             r1_grads = torch.autograd.grad(outputs=[real_logits.sum()], inputs=[real_img_tmp['image']], create_graph=True, only_inputs=True)
                             r1_grads_image = r1_grads[0]

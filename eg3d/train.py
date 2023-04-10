@@ -198,6 +198,7 @@ def parse_comma_separated_list(s):
 @click.option('--renderer_lr_mult',    help='backbone learning rate multiplier.', metavar='FLOAT', type=click.FloatRange(min=0), default=1, required=False, show_default=True)
 @click.option('--decoder_lr_mult',    help='backbone learning rate multiplier.', metavar='FLOAT', type=click.FloatRange(min=0), default=1, required=False, show_default=True)
 @click.option('--return_video',    help='Every image will be zoomed to make video', metavar='BOOL', type=bool, required=False, default=False)
+@click.option('--discrim_type',    help='What type of discriminator to use (DualDiscriminator, AxisAlignedDiscriminator) ', metavar='STR', type=str, required=False, default='AxisAlignedDiscriminator')
 @click.option('--fixed_time_frames', help='Take slice of videos always perpendicular to time axis', metavar='BOOL',
               type=bool, default=False, show_default=True)
 def main(**kwargs):
@@ -282,7 +283,7 @@ def main(**kwargs):
     # Base configuration.
     c.ema_kimg = c.batch_size * 10 / 32
     c.G_kwargs.class_name = 'training.triplane.TriPlaneGenerator'
-    c.D_kwargs.class_name = 'training.dual_discriminator.DualDiscriminator'
+    c.D_kwargs.class_name = f'training.dual_discriminator.{opts.discrim_type}'
     c.G_kwargs.fused_modconv_default = 'inference_only' # Speed up training by using regular convolutions instead of grouped convolutions.
     c.loss_kwargs.filter_mode = 'antialiased' # Filter mode for raw images ['antialiased', 'none', float [0-1]]
     c.D_kwargs.disc_c_noise = opts.disc_c_noise # Regularization for discriminator pose conditioning

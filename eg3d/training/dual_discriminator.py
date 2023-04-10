@@ -154,7 +154,6 @@ class DualDiscriminator(torch.nn.Module):
         self.disc_c_noise = disc_c_noise
 
     def forward(self, img, c, update_emas=False, **block_kwargs):
-        # c = c * 0   # Todo(Partha): Tmeporarily removing conditioing from the discriminator. remove this
         cond = c.clone()
         # cond[:, 0] = c[:, 0] - 1
         # print(c)
@@ -179,6 +178,86 @@ class DualDiscriminator(torch.nn.Module):
         return f'c_dim={self.c_dim:d}, img_resolution={self.img_resolution:d}, img_channels={self.img_channels:d}'
 
 #----------------------------------------------------------------------------
+@persistence.persistent_class
+class AxisAlignedDiscriminator(torch.nn.Module):
+    def __init__(self,
+                 c_dim,  # Conditioning label (C) dimensionality.
+                 img_resolution,  # Input resolution.
+                 img_channels,  # Number of input color channels.
+                 architecture='resnet',  # Architecture: 'orig', 'skip', 'resnet'.
+                 channel_base=32768,  # Overall multiplier for the number of channels.
+                 channel_max=512,  # Maximum number of channels in any layer.
+                 num_fp16_res=4,  # Use FP16 for the N highest resolutions.
+                 conv_clamp=256,  # Clamp the output of convolution layers to +-X, None = disable clamping.
+                 cmap_dim=None,  # Dimensionality of mapped conditioning label, None = default.
+                 disc_c_noise=0,  # Corrupt camera parameters with X std dev of noise before disc. pose conditioning.
+                 block_kwargs={},  # Arguments for DiscriminatorBlock.
+                 mapping_kwargs={},  # Arguments for MappingNetwork.
+                 epilogue_kwargs={},  # Arguments for DiscriminatorEpilogue.
+                 ):
+        super().__init__()
+        self.spacial_dom_supres_discrim_xy = DualDiscriminator(c_dim, img_resolution, img_channels, architecture,
+                                                               channel_base, channel_max, num_fp16_res, conv_clamp,
+                                                               cmap_dim, disc_c_noise, block_kwargs, mapping_kwargs,
+                                                               epilogue_kwargs)
+        sr_upsample_factor = 1  # Just passed as dummy arguments to single discriminator. will not be used.
+        self.xt_discrim = SingleDiscriminator(c_dim, img_resolution//4, img_channels, architecture, channel_base,
+                                              channel_max, num_fp16_res, conv_clamp, cmap_dim, sr_upsample_factor,
+                                              block_kwargs, mapping_kwargs, epilogue_kwargs)
+        self.yt_discrim = SingleDiscriminator(c_dim, img_resolution//4, img_channels, architecture, channel_base,
+                                              channel_max, num_fp16_res, conv_clamp, cmap_dim, sr_upsample_factor,
+                                              block_kwargs, mapping_kwargs, epilogue_kwargs)
+
+    def forward(self, img, c, update_emas=False, **block_kwargs):
+        yt_idx = (c[:, 0].to(torch.int) == 1)
+        xt_idx = (c[:, 1].to(torch.int) == 1)
+        xy_idx = (c[:, 2].to(torch.int) == 1)
+
+        c_yt = c[yt_idx, :]
+        c_xt = c[xt_idx, :]
+        c_xy = c[xy_idx, :]
+
+        img_yt = {'image': img['image_raw'][yt_idx, :]}
+        img_xt = {'image': img['image_raw'][xt_idx, :]}
+        img_xy = {'image': img['image'][xy_idx, :], 'image_raw': img['image_raw'][xy_idx, :]}
+
+        # import ipdb; ipdb.set_trace()
+        if len(c_yt) != 0:
+            dresp_yt = self.yt_discrim(img_yt, c_yt, update_emas=update_emas, **block_kwargs)
+            discrim_out_shape = list(dresp_yt.shape[1:])
+        else:
+            _ = self.yt_discrim({'image': img['image_raw'][0:1, :]}, c[0:1], update_emas=update_emas,
+                                **block_kwargs).detach()
+
+        if len(c_xt) != 0:
+            dresp_xt = self.xt_discrim(img_xt, c_xt, update_emas=update_emas, **block_kwargs)
+            discrim_out_shape = list(dresp_xt.shape[1:])
+        else:
+            _ = self.xt_discrim({'image': img['image_raw'][0:1, :]}, c[0:1], update_emas=update_emas,
+                                       **block_kwargs).detach()
+
+        if len(c_xy) != 0:
+            dresp_xy = self.spacial_dom_supres_discrim_xy(img_xy, c_xy, update_emas=update_emas, **block_kwargs)
+            discrim_out_shape = list(dresp_xy.shape[1:])
+        else:
+            _ = self.spacial_dom_supres_discrim_xy(
+                {'image': img['image'][0:1, :], 'image_raw': img['image_raw'][0:1, :]}, c[0:1], update_emas=update_emas,
+                **block_kwargs).detach()
+
+        dresp = torch.zeros([c.shape[0], ] + discrim_out_shape, device=c.device)
+
+        if len(c_yt) != 0:
+            dresp[yt_idx] = dresp_yt
+
+        if len(c_xt) != 0:
+            dresp[xt_idx] = dresp_xt
+
+        if len(c_xy) != 0:
+            dresp[xy_idx] = dresp_xy
+
+        return dresp
+
+
 
 @persistence.persistent_class
 class DummyDualDiscriminator(torch.nn.Module):
