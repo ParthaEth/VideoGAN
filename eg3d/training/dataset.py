@@ -111,7 +111,8 @@ class Dataset(torch.utils.data.Dataset):
         image, aug_label = self._load_raw_image(self._raw_idx[idx])
         # print(image.shape)
         assert isinstance(image, np.ndarray)
-        assert list(image.shape) == self.image_shape
+        assert list(image.shape) == self.image_shape, f'Expected imgeshape: {self.image_shape}, ' \
+                                                      f'received {list(image.shape)}'
         assert image.dtype == np.uint8
         if self._xflip[idx]:
             assert image.ndim == 3 # CHW
@@ -210,7 +211,8 @@ class VideoFolderDataset(Dataset):
         if os.path.isdir(self._path):
             self._type = 'dir'
             # self._all_fnames = {os.path.relpath(os.path.join(root, fname), start=self._path) for root, _dirs, files in os.walk(self._path) for fname in files}
-            self._all_fnames = {os.path.join(self._path, f'{fname_idx:05d}.mp4') for fname_idx in range(50_000)}
+            # self._all_fnames = {os.path.join(self._path, f'{fname_idx:05d}.mp4') for fname_idx in range(50_000)}
+            self._all_fnames = {os.path.join(self._path, f_name) for f_name in os.listdir(self._path) if f_name.endswith('.mp4')}
         elif self._file_ext(self._path) == '.zip':
             self._type = 'zip'
             self._all_fnames = set(self._get_zipfile().namelist())
@@ -262,10 +264,14 @@ class VideoFolderDataset(Dataset):
         return dict(super().__getstate__(), _zipfile=None)
 
     def read_vid_from_file(self, fname):
-        reader = imageio.get_reader(fname, mode='I')
-        vid_vol = []
-        for im in reader:
-            vid_vol.append(im)
+        try:
+            reader = imageio.get_reader(fname, mode='I')
+            vid_vol = []
+            for im in reader:
+                vid_vol.append(im)
+        except OSError:
+            os.remove(fname)
+            return None
 
         return np.stack(vid_vol, axis=0).transpose(3, 1, 2, 0)
 
@@ -283,6 +289,9 @@ class VideoFolderDataset(Dataset):
                 vid_vol = self.get_from_cached(fname)
 
         _, _, resolution, _ = vid_vol.shape
+        if list(vid_vol.shape) != [3, 256, 256, 256]:
+            raise ValueError(f'The video {fname} has bad shape aborting!')
+
         if self.return_video:
             if getattr(self, 'fixed_time_frames', True):
                 constant_axis = 't'
@@ -305,22 +314,17 @@ class VideoFolderDataset(Dataset):
         return image, np.array(lbl_cond)
 
     def _load_raw_labels(self):
-        # fname = 'dataset.json'
-        # if fname not in self._all_fnames:
-        #     return None
-        # with self._open_file(fname) as f:
-        #     labels = json.load(f)['labels']
-        # if labels is None:
-        #     return None
-        # labels = dict(labels)
-        # labels = [labels[fname.replace('\\', '/')] for fname in self._video_fnames]
-        # labels = np.array(labels)
-        # labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])[:, :4]
-        labels = np.zeros((len(self), 8), dtype=np.float32)
-        label_init = np.load(os.path.join(self._path, 'labels.npy'))
-        labels[:, 4:] = label_init[:len(self), :]
-        labels[:, 4:6] = labels[:, 4:6]/128 - 1
-        labels[:, 6:] = (labels[:, 6:] - 2) / 4 - 1
+        label_init_width = 0
+        if os.path.exists(os.path.join(self._path, 'labels.npy')):
+            label_init = np.load(os.path.join(self._path, 'labels.npy'))
+            label_init_width = label_init.shape[1]
+        labels = np.zeros((len(self), 4 + label_init_width), dtype=np.float32)
+
+        if label_init_width != 0:
+            labels[:, 4:] = label_init[:len(self), :]
+            labels[:, 4:6] = labels[:, 4:6]/128 - 1
+            labels[:, 6:] = (labels[:, 6:] - 2) / 4 - 1
+
         if self.return_video:
             for i in range(len(labels)):
                 if self.fixed_time_frames:

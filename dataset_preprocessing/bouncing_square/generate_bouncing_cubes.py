@@ -10,7 +10,7 @@ def main(start_idx, end_idx, disable_progressbar):
     total_frames = 256
 
     size_h = size_w = 80
-    outdir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/'
+    outdir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/ranad_init_vel'
     if disable_progressbar:
         pbar = range(start_idx, end_idx)
     else:
@@ -18,8 +18,8 @@ def main(start_idx, end_idx, disable_progressbar):
     for vid_idx in pbar:
         x0 = np.random.randint(0, 256 - size_w)
         y0 = np.random.randint(0, 256 - size_h)
-        vel_p_frame = np.random.uniform(-3, 3, 2)  # velocity in pixels per frame
-        color = tuple(np.random.randint(128, 255, 3))
+        vel_p_frame = np.random.uniform(0.1, 3, 2)  # velocity in pixels per frame
+        color = tuple(np.random.randint(50, 255, 3))
 
         np.save(f'{outdir}/init_cond/{vid_idx:05d}.npy', np.array([x0, y0, vel_p_frame[0], vel_p_frame[1]]))
 
