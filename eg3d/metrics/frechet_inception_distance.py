@@ -40,18 +40,12 @@ def compute_fid(opts, max_real, num_gen):
     if opts.rank != 0:
         return float('nan')
 
-    if np.any(np.isnan(mu_real)) or np.any(np.isnan(sigma_real)) or np.any(np.isnan(mu_gen)) or np.any(np.isnan(sigma_gen)) \
-            or np.any(np.isinf(mu_real)) or np.any(np.isinf(sigma_real)) or np.any(np.isinf(mu_gen)) or np.any(np.isinf(sigma_gen)):
-        import ipdb; ipdb.set_trace()
-    else:
-        print('Checks passed')
+    for mu_sigmas in [mu_gen, sigma_gen, mu_real, sigma_real]:
+        np.nan_to_num(mu_sigmas, copy=False, nan=0, neginf=-10, posinf=10)
 
     m = np.square(mu_gen - mu_real).sum()
     s, _ = scipy.linalg.sqrtm(np.dot(sigma_gen, sigma_real), disp=False) # pylint: disable=no-member
     fid = np.real(m + np.trace(sigma_gen + sigma_real - s * 2))
-
-    import ipdb;
-    ipdb.set_trace()
 
     return float(fid)
 
