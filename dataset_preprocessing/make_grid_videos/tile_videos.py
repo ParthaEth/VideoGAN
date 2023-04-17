@@ -5,11 +5,11 @@ import numpy as np
 import tqdm
 
 # source_root = '/is/cluster/fast/pghosh/datasets/ffhq/256X256_zoom_vid'
-# source_root = '/home/pghosh/Downloads/ColoredBouncingCube/good/'
-source_root = '/is/cluster/fast/pghosh/datasets/bouncing_sq/ranad_init_vel/vids'
+source_root = '/home/pghosh/Downloads/videoGeneration/bw_bouncing_sq/all_vids'
+# source_root = '/is/cluster/fast/pghosh/datasets/bouncing_sq/ranad_init_vel/vids'
 # outdir = '/is/cluster/fast/pghosh/datasets/ffhq'
-# outdir = '/home/pghosh/Downloads/ColoredBouncingCube/'
-outdir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/ranad_init_vel'
+outdir = '/home/pghosh/Downloads/videoGeneration/bw_bouncing_sq/'
+# outdir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/ranad_init_vel'
 st_idx = 0
 tile_width = tile_height = 5
 vid_h = vid_w = vid_frames = 256
