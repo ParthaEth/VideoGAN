@@ -115,7 +115,7 @@ class TriPlaneGenerator(torch.nn.Module):
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
         #     self.renderer(planes, self.decoder, ray_origins, ray_directions, self.rendering_kwargs) # channels last
-        rgb_image, features = self.renderer(planes, self.decoder, c, None, self.rendering_kwargs)  # channels last
+        rgb_image, peep_video, features = self.renderer(planes, self.decoder, c, None, self.rendering_kwargs)  # channels last
 
         # Reshape into 'raw' image
         H = W = self.neural_rendering_resolution
@@ -149,7 +149,7 @@ class TriPlaneGenerator(torch.nn.Module):
         # sr_image = rgb_image
         # rgb_image = self.downscale4x(sr_image)
 
-        return {'image': sr_image, 'image_raw': rgb_image, 'image_depth': None}
+        return {'image': sr_image, 'image_raw': rgb_image, 'peep_vid': peep_video}
     
     def sample(self, coordinates, directions, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False,
                **synthesis_kwargs):
@@ -212,12 +212,12 @@ class OSGDecoder(torch.nn.Module):
         self.synth_net = torch.nn.ModuleList([
             SynthesisBlock(in_channels=n_features * 3, out_channels=8 * n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1,
-                           activation='lrelu',
-                           kernel_size=1, architecture='orig',),
+                           activation='lrelu', kernel_size=1, architecture='orig',),
+
             SynthesisBlock(in_channels=8 * n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
-                           activation='lrelu',
-                           architecture='resnet'),
+                           activation='lrelu', architecture='resnet'),
+
             # SynthesisBlock(in_channels=n_features, out_channels=n_features, w_dim=4, resolution=None,
             #                img_channels=3, use_noise=False, is_last=False, up=1, activation='relu', kernel_size=1,
             #                architecture='skip'),
@@ -226,21 +226,35 @@ class OSGDecoder(torch.nn.Module):
                            activation='lrelu',
                            kernel_size=1, architecture='skip')])
 
+        # import ipdb; ipdb.set_trace()
+
         # self.modulator = torch.nn.ModuleList(
         #     [Conv2dLayer(in_channels=n_features * 3, out_channels=4*n_features, kernel_size=1,  activation='relu'),
         #      Conv2dLayer(in_channels=4*n_features, out_channels=n_features, kernel_size=1,  activation='relu'),
         #      Conv2dLayer(in_channels=n_features, out_channels=options['decoder_output_dim'], kernel_size=1,
         #                  activation='relu'),])
 
-    def forward(self, sampled_features, coordinates, rendering_res):
+    def forward(self, sampled_features, coordinates, full_rendering_res):
         # Aggregate features
         # print(f'feature:{sampled_features[0, :, 100, :4]}')
         # sampled_features = sampled_features.mean(1, keepdim=True)
+        rendering_spatial_res = full_rendering_res[0]
         batch_size, planes, num_pts, pln_chnls = sampled_features.shape
-        ws = torch.zeros((batch_size * planes//3, 3, 4), dtype=sampled_features.dtype, device=sampled_features.device)
-        # cods = coordinates.permute(0, 2, 1).reshape(batch_size, 3, rendering_res, rendering_res)
-        x = sampled_features.permute(0, 1, 3, 2).reshape(batch_size * planes//3, 3 * pln_chnls, rendering_res,
-                                                         rendering_res)
+        # cods = coordinates.permute(0, 2, 1).reshape(batch_size, 3, rendering_spatial_res, rendering_spatial_res)
+        if full_rendering_res[-1] is None:
+            ws = torch.zeros((batch_size * planes // 3, 3, 4), dtype=sampled_features.dtype,
+                             device=sampled_features.device)
+            x = sampled_features.permute(0, 1, 3, 2).reshape(batch_size * planes//3, 3 * pln_chnls,
+                                                             rendering_spatial_res, rendering_spatial_res)
+        else:
+            ws = torch.zeros((batch_size * planes // 3 * full_rendering_res[-1], 3, 4), dtype=sampled_features.dtype,
+                             device=sampled_features.device)
+            x = sampled_features.permute(0, 2, 1, 3).reshape(batch_size * full_rendering_res[-1],
+                                                             rendering_spatial_res, rendering_spatial_res, planes,
+                                                             pln_chnls)
+            x = x.permute(0, 4, 3, 1, 2).reshape(batch_size * full_rendering_res[-1] * planes//3, 3 * pln_chnls,
+                                                 rendering_spatial_res, rendering_spatial_res)
+            # import ipdb; ipdb.set_trace()
         # x = x * cods.repeat(planes//3, pln_chnls, 1, 1)
         # x = x / 0.23730 * 0.01/4
         # x = x * 0.05952380952380953 / 3
@@ -249,7 +263,7 @@ class OSGDecoder(torch.nn.Module):
         # import ipdb; ipdb.set_trace()
         img = None
         for i, synth_layer in enumerate(self.synth_net):
-            synth_layer.resolution = rendering_res
+            synth_layer.resolution = rendering_spatial_res
             # mod_layer = self.modulator[i]
             # if i == 2:
             #     skip = x

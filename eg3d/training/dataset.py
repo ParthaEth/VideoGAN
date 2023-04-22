@@ -108,7 +108,7 @@ class Dataset(torch.utils.data.Dataset):
         return self._raw_idx.size
 
     def __getitem__(self, idx):
-        image, aug_label = self._load_raw_image(self._raw_idx[idx])
+        image, peep_vid, aug_label = self._load_raw_image(self._raw_idx[idx])
         # print(image.shape)
         assert isinstance(image, np.ndarray)
         assert list(image.shape) == self.image_shape, f'Expected imgeshape: {self.image_shape}, ' \
@@ -119,10 +119,10 @@ class Dataset(torch.utils.data.Dataset):
             image = image[:, :, ::-1]
         label = self.get_label(idx)
         if len(label) > 0:
-            label[0:4] = aug_label
+            label[0:6] = aug_label
             # if not (int(label[2]) == 1 and label[3] < 2/256):
             #     label[4:] *= 0
-        return image.copy(), label
+        return image.copy(), peep_vid, label
 
     def get_label(self, idx):
         label = self._get_raw_labels()[self._raw_idx[idx]]
@@ -207,6 +207,8 @@ class VideoFolderDataset(Dataset):
         self.return_video = return_video
         max_warnings = 1
         self.axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
+        self.peep_window_crop_size = 64
+        # self.peep_window_rescale_size = 32
 
         if os.path.isdir(self._path):
             self._type = 'dir'
@@ -277,7 +279,7 @@ class VideoFolderDataset(Dataset):
 
     def _load_raw_image(self, raw_idx, skip_cache=False):
         fname = self._video_fnames[raw_idx]
-        lbl_cond = [0, 0, 1, 0]
+        lbl_cond = [0, 0, 1, 0, 0]
         if getattr(self, 'cache_dir', None) is None or skip_cache:
             with self._open_file(fname) as f:
                 vid_vol = self.read_vid_from_file(fname)
@@ -289,42 +291,50 @@ class VideoFolderDataset(Dataset):
                 vid_vol = self.get_from_cached(fname)
 
         _, _, resolution, _ = vid_vol.shape
-        if list(vid_vol.shape) != [3, 256, 256, 256]:
-            raise ValueError(f'The video {fname} has bad shape aborting!')
-
+        frame_location = np.random.randint(0, resolution, 1)[0]
         if self.return_video:
             if getattr(self, 'fixed_time_frames', True):
                 constant_axis = 't'
             else:
                 constant_axis = random.choice(['x', 'y', 't'])
-            cnst_coordinate = np.random.randint(0, resolution, 1)[0]
+            peep_location = np.random.randint(0, resolution - self.peep_window_crop_size, 2)
+            lbl_cond = self.axis_dict[constant_axis] + [frame_location / resolution, ] + list(
+                peep_location / resolution)
         else:
             constant_axis = 't'
-            cnst_coordinate = 0
+            peep_location = None
+            lbl_cond = self.axis_dict[constant_axis] + [frame_location / resolution, ] + [0, 0]
 
         # import ipdb; ipdb.set_trace()
-        lbl_cond = self.axis_dict[constant_axis] + [cnst_coordinate/resolution, ]
-        if constant_axis == 'x':
-            image = vid_vol[:, cnst_coordinate, :, :]
-        elif constant_axis == 'y':
-            image = vid_vol[:, :, cnst_coordinate, :]
-        elif constant_axis == 't':
-            image = vid_vol[:, :, :, cnst_coordinate]
 
-        return image, np.array(lbl_cond)
+        if constant_axis == 'x':
+            image = vid_vol[:, frame_location, :, :]
+        elif constant_axis == 'y':
+            image = vid_vol[:, :, frame_location, :]
+        elif constant_axis == 't':
+            image = vid_vol[:, :, :, frame_location]
+            if peep_location is None:
+                peep_vid = 'None'
+            else:
+                peep_vid = vid_vol[:, peep_location[0]:peep_location[0]+self.peep_window_crop_size,
+                                      peep_location[1]:peep_location[1]+self.peep_window_crop_size, :]
+
+        return image, peep_vid, np.array(lbl_cond)
 
     def _load_raw_labels(self):
         label_init_width = 0
+        permanent_lebels = 6
         if os.path.exists(os.path.join(self._path, 'labels.npy')):
             label_init = np.load(os.path.join(self._path, 'labels.npy'))
             label_init_width = label_init.shape[1]
-        labels = np.zeros((len(self), 4 + label_init_width), dtype=np.float32)
+        labels = np.zeros((len(self), permanent_lebels + label_init_width), dtype=np.float32)
 
         if label_init_width != 0:
-            labels[:, 4:] = label_init[:len(self), :]
-            labels[:, 4:6] = labels[:, 4:6]/128 - 1
-            labels[:, 6:] = (labels[:, 6:] - 2) / 4 - 1
+            labels[:, permanent_lebels:] = label_init[:len(self), :]
+            labels[:, permanent_lebels:permanent_lebels+2] = labels[:, permanent_lebels:permanent_lebels+2]/128 - 1
+            labels[:, permanent_lebels+2:] = (labels[:, permanent_lebels+2:] - 2) / 4 - 1
 
+        frame_location = np.random.randint(0, self.resolution, len(labels)) / self.resolution
         if self.return_video:
             for i in range(len(labels)):
                 if self.fixed_time_frames:
@@ -332,12 +342,14 @@ class VideoFolderDataset(Dataset):
                 else:
                     constant_axis = random.choice(['x', 'y', 't'])
                 labels[i, :3] = np.array(self.axis_dict[constant_axis])
-            cnst_coordinate = np.random.randint(0, self.resolution, len(labels))
-            labels[:, 3] = cnst_coordinate / self.resolution
+            peep_location = np.random.randint(0, self.resolution - self.peep_window_crop_size, (len(labels), 2))
+            labels[:, 4:6] = peep_location / self.resolution
             # import ipdb; ipdb.set_trace()
         else:
             labels[:, 0:3] = np.array([[0, 0, 1], ]).repeat(len(labels), 0)
-            labels[:, 3] = 0
+            labels[:, 4:6] = 0
+
+        labels[:, 3] = frame_location
 
         return labels
 

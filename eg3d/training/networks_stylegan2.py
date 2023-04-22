@@ -313,16 +313,18 @@ class SynthesisLayer(torch.nn.Module):
 
     def forward(self, x, w, noise_mode='random', fused_modconv=True, gain=1):
         assert noise_mode in ['random', 'const', 'none']
-        if self.resolution is not None:
+        if self.resolution is None:
+            resolution = int(x.shape[-1] * self.up)
+        else:
+            resolution = self.resolution
             in_resolution = self.resolution // self.up
             misc.assert_shape(x, [None, self.in_channels, in_resolution, in_resolution])
-        else:
-            self.resolution = int(x.shape[-1] * self.up)
+
         styles = self.affine(w)
 
         noise = None
         if self.use_noise and noise_mode == 'random':
-            noise = torch.randn([x.shape[0], 1, self.resolution, self.resolution], device=x.device) * self.noise_strength
+            noise = torch.randn([x.shape[0], 1, resolution, resolution], device=x.device) * self.noise_strength
         if self.use_noise and noise_mode == 'const':
             noise = self.noise_const * self.noise_strength
 
@@ -342,7 +344,7 @@ class SynthesisLayer(torch.nn.Module):
     def extra_repr(self):
         return ' '.join([
             f'in_channels={self.in_channels:d}, out_channels={self.out_channels:d}, w_dim={self.w_dim:d},',
-            f'resolution={self.resolution:d}, up={self.up}, activation={self.activation:s}'])
+            f'resolution={self.resolution}, up={self.up}, activation={self.activation:s}'])
 
 #----------------------------------------------------------------------------
 

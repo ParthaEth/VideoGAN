@@ -177,7 +177,49 @@ class DualDiscriminator(torch.nn.Module):
     def extra_repr(self):
         return f'c_dim={self.c_dim:d}, img_resolution={self.img_resolution:d}, img_channels={self.img_channels:d}'
 
+#------------------------------------------------------------------------------
+
+@persistence.persistent_class
+class DualPeepDicriminator(torch.nn.Module):
+    def __init__(self,
+        c_dim,                          # Conditioning label (C) dimensionality.
+        img_resolution,                 # Input resolution.
+        img_channels,                   # Number of input color channels.
+        architecture        = 'resnet', # Architecture: 'orig', 'skip', 'resnet'.
+        channel_base        = 32768,    # Overall multiplier for the number of channels.
+        channel_max         = 512,      # Maximum number of channels in any layer.
+        num_fp16_res        = 4,        # Use FP16 for the N highest resolutions.
+        conv_clamp          = 256,      # Clamp the output of convolution layers to +-X, None = disable clamping.
+        cmap_dim            = None,     # Dimensionality of mapped conditioning label, None = default.
+        disc_c_noise        = 0,        # Corrupt camera parameters with X std dev of noise before disc. pose conditioning.
+        block_kwargs        = {},       # Arguments for DiscriminatorBlock.
+        mapping_kwargs      = {},       # Arguments for MappingNetwork.
+        epilogue_kwargs     = {},       # Arguments for DiscriminatorEpilogue.
+    ):
+        super().__init__()
+        self.image_pair_discrim = DualDiscriminator(c_dim, img_resolution, img_channels, architecture,
+                                                    channel_base, channel_max, num_fp16_res, conv_clamp,
+                                                    cmap_dim, disc_c_noise, block_kwargs, mapping_kwargs,
+                                                    epilogue_kwargs)
+        video_color_channels = 256  # video frame chnannels
+        video_resolution = img_resolution//8
+        sr_upsample_factor = 1
+        self.vid_discrim = SingleDiscriminator(c_dim, video_resolution, video_color_channels * 3, architecture,
+                                               channel_base, channel_max, num_fp16_res, conv_clamp, cmap_dim,
+                                               sr_upsample_factor, block_kwargs, mapping_kwargs, epilogue_kwargs)
+
+    def forward(self, img, c, update_emas=False, **block_kwargs):
+        img_pair_logits = self.image_pair_discrim(img, c * 0, update_emas=update_emas, **block_kwargs)
+        b_size, c_ch, h, w, t_steps = img['peep_vid'].shape
+        vid_as_mult_ch_img = img['peep_vid'].permute(0, 1, 4, 2, 3).reshape(b_size, c_ch*t_steps, h, w)
+        vid_logits = self.vid_discrim({'image': vid_as_mult_ch_img}, c, update_emas=update_emas, **block_kwargs)
+
+        return img_pair_logits + vid_logits
+
+
+
 #----------------------------------------------------------------------------
+
 @persistence.persistent_class
 class AxisAlignedDiscriminator(torch.nn.Module):
     def __init__(self,

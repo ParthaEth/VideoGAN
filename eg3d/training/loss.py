@@ -20,13 +20,18 @@ from training.dual_discriminator import filtered_resizing
 #----------------------------------------------------------------------------
 
 class Loss:
-    def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg): # to be overridden by subclass
+    def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, peep_vid_real, gain, cur_nimg):
+        # to be overridden by subclass
         raise NotImplementedError()
 
 #----------------------------------------------------------------------------
 
 class StyleGAN2Loss(Loss):
-    def __init__(self, device, G, D, augment_pipe=None, r1_gamma=10, style_mixing_prob=0, pl_weight=0, pl_batch_shrink=2, pl_decay=0.01, pl_no_weight_grad=False, blur_init_sigma=0, blur_fade_kimg=0, r1_gamma_init=0, r1_gamma_fade_kimg=0, neural_rendering_resolution_initial=64, neural_rendering_resolution_final=None, neural_rendering_resolution_fade_kimg=0, gpc_reg_fade_kimg=1000, gpc_reg_prob=None, dual_discrimination=False, filter_mode='antialiased'):
+    def __init__(self, device, G, D, augment_pipe=None, r1_gamma=10, style_mixing_prob=0, pl_weight=0,
+                 pl_batch_shrink=2, pl_decay=0.01, pl_no_weight_grad=False, blur_init_sigma=0, blur_fade_kimg=0,
+                 r1_gamma_init=0, r1_gamma_fade_kimg=0, neural_rendering_resolution_initial=64,
+                 neural_rendering_resolution_final=None, neural_rendering_resolution_fade_kimg=0,
+                 gpc_reg_fade_kimg=1000, gpc_reg_prob=None, dual_discrimination=False, filter_mode='antialiased'):
         super().__init__()
         self.device             = device
         self.G                  = G
@@ -67,8 +72,9 @@ class StyleGAN2Loss(Loss):
                 cutoff = torch.empty([], dtype=torch.int64, device=ws.device).random_(1, ws.shape[1])
                 cutoff = torch.where(torch.rand([], device=ws.device) < self.style_mixing_prob, cutoff, torch.full_like(cutoff, ws.shape[1]))
                 ws[:, cutoff:] = self.G.mapping(torch.randn_like(z), c, update_emas=False)[:, cutoff:]
-        gen_output = self.G.synthesis(ws, c, neural_rendering_resolution=neural_rendering_resolution, update_emas=update_emas)
-        return gen_output, ws
+        gen_img = self.G.synthesis(ws, c, neural_rendering_resolution=neural_rendering_resolution,
+                                                 update_emas=update_emas)
+        return gen_img, ws
 
     def run_D(self, img, c, blur_sigma=0, blur_sigma_raw=0, update_emas=False):
         blur_size = np.floor(blur_sigma * 3)
@@ -87,7 +93,7 @@ class StyleGAN2Loss(Loss):
         logits = self.D(img, c, update_emas=update_emas)
         return logits
 
-    def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg):
+    def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, peep_vid_real, gain, cur_nimg):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
         if self.G.rendering_kwargs.get('density_reg', 0) == 0:
             phase = {'Greg': 'none', 'Gboth': 'Gmain'}.get(phase, phase)
@@ -105,7 +111,17 @@ class StyleGAN2Loss(Loss):
         else:
             neural_rendering_resolution = self.neural_rendering_resolution_initial
 
-        real_img_raw = filtered_resizing(real_img, size=neural_rendering_resolution, f=self.resample_filter, filter_mode=self.filter_mode)
+        real_img_raw = filtered_resizing(real_img, size=neural_rendering_resolution, f=self.resample_filter,
+                                         filter_mode=self.filter_mode)
+
+        # real video resizing
+        batch_s, c_ch, v_h, v_w, v_t = peep_vid_real.shape
+        peep_vid_real = peep_vid_real.permute(0, 4, 1, 2, 3).resize(batch_s * v_t, c_ch, v_h, v_w)
+        peep_vid_real = filtered_resizing(peep_vid_real, size=neural_rendering_resolution//2, f=self.resample_filter,
+                                          filter_mode='antialiased')
+        peep_vid_real = peep_vid_real\
+            .resize(batch_s, v_t, c_ch, neural_rendering_resolution//2, neural_rendering_resolution//2)\
+            .permute(0, 2, 3, 4, 1)
 
         if self.blur_raw_target:
             blur_size = np.floor(blur_sigma * 3)
@@ -118,7 +134,8 @@ class StyleGAN2Loss(Loss):
         # Gmain: Maximize logits for generated images.
         if phase in ['Gmain', 'Gboth']:
             with torch.autograd.profiler.record_function('Gmain_forward'):
-                gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution)
+                gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob,
+                                                            neural_rendering_resolution=neural_rendering_resolution)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
@@ -243,7 +260,9 @@ class StyleGAN2Loss(Loss):
         loss_Dgen = 0
         if phase in ['Dmain', 'Dboth']:
             with torch.autograd.profiler.record_function('Dgen_forward'):
-                gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution, update_emas=True)
+                gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob,
+                                                            neural_rendering_resolution=neural_rendering_resolution,
+                                                            update_emas=True)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True)
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
@@ -258,7 +277,9 @@ class StyleGAN2Loss(Loss):
             with torch.autograd.profiler.record_function(name + '_forward'):
                 real_img_tmp_image = real_img['image'].detach().requires_grad_(phase in ['Dreg', 'Dboth'])
                 real_img_tmp_image_raw = real_img['image_raw'].detach().requires_grad_(phase in ['Dreg', 'Dboth'])
-                real_img_tmp = {'image': real_img_tmp_image, 'image_raw': real_img_tmp_image_raw}
+                peep_vid_real_temp = peep_vid_real.detach().requires_grad_(phase in ['Dreg', 'Dboth'])
+                real_img_tmp = {'image': real_img_tmp_image, 'image_raw': real_img_tmp_image_raw,
+                                'peep_vid':peep_vid_real_temp}
 
                 real_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/real', real_logits)
@@ -273,19 +294,23 @@ class StyleGAN2Loss(Loss):
                 if phase in ['Dreg', 'Dboth']:
                     if self.dual_discrimination:
                         with torch.autograd.profiler.record_function('r1_grads'), conv2d_gradfix.no_weight_gradients():
-                            r1_grads = torch.autograd.grad(outputs=[real_logits.sum()],
-                                                           inputs=[real_img_tmp['image'], real_img_tmp['image_raw']],
-                                                           create_graph=True, only_inputs=True, allow_unused=True)
+                            r1_grads = torch.autograd.grad(
+                                outputs=[real_logits.sum()],
+                                inputs=[real_img_tmp['image'], real_img_tmp['image_raw'], peep_vid_real_temp],
+                                create_graph=True, only_inputs=True, allow_unused=True)
 
-                            r1_grads_image_pen = r1_grads_image_raw_pen = 0
+                            r1_grads_image_pen = r1_grads_image_raw_pen = r1_grads_peep_vid_pen = 0
                             if r1_grads[0] is not None:
                                 r1_grads_image_pen = torch.nan_to_num(r1_grads[0]).square().sum([1,2,3])
                             if r1_grads[1] is not None:
                                 r1_grads_image_raw_pen = torch.nan_to_num(r1_grads[1]).square().sum([1,2,3])
-                        r1_penalty = r1_grads_image_pen + r1_grads_image_raw_pen
+                            if r1_grads[2] is not None:
+                                r1_grads_peep_vid_pen = torch.nan_to_num(r1_grads[2]).square().sum()
+                        r1_penalty = r1_grads_image_pen + r1_grads_image_raw_pen + r1_grads_peep_vid_pen
                     else:  # single discrimination
                         with torch.autograd.profiler.record_function('r1_grads'), conv2d_gradfix.no_weight_gradients():
-                            r1_grads = torch.autograd.grad(outputs=[real_logits.sum()], inputs=[real_img_tmp['image']], create_graph=True, only_inputs=True)
+                            r1_grads = torch.autograd.grad(outputs=[real_logits.sum()], inputs=[real_img_tmp['image']],
+                                                           create_graph=True, only_inputs=True)
                             r1_grads_image = r1_grads[0]
                         r1_penalty = r1_grads_image.square().sum([1,2,3])
                     loss_Dr1 = r1_penalty * (r1_gamma / 2)

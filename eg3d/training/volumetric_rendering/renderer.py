@@ -16,6 +16,7 @@ ray, and computes pixel colors using the volume rendering equation.
 import math
 
 import ipdb
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -175,7 +176,9 @@ class ImportanceRenderer(torch.nn.Module):
                                               box_warp=options['box_warp'])
 
         out = decoder(sampled_features, coordinates=sample_coordinates,
-                      rendering_res=options['neural_rendering_resolution'])
+                      full_rendering_res=(options['neural_rendering_resolution'],
+                                     options['neural_rendering_resolution'],
+                                     options['time_steps']))
         if options.get('density_noise', 0) > 0:
             out['sigma'] += torch.randn_like(out['sigma']) * options['density_noise']
         return out
@@ -296,13 +299,14 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         # assert ray_origins is None  # This will be ignored silently
         # assert ray_directions is None   # This will be ignored silently
         device = planes.device
+        datatype = planes.dtype
         self.plane_axes = self.plane_axes.to(device)
         #
 
         batch_size, _, planes_ch, _, _ = planes.shape  # get batch size! ray_origins.shape
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
-        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
-        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=torch.float32, device=device)
+        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device)
+        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device)
         if self.return_video:  # Remove hack
             # import ipdb; ipdb.set_trace()
             assert(torch.all(-0.01 <= c[:, 3]) and torch.all(c[:, 3] <= 1.01))
@@ -343,12 +347,32 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
             .reshape((batch_size, num_coordinates_per_axis*num_coordinates_per_axis, 3))
         # sample_coordinates = sample_coordinates + torch.randn_like(sample_coordinates)/100
         # print(f'coord: {sample_coordinates[0, :2, :]}')
-        sample_directions = sample_coordinates
+        # sample_directions = sample_coordinates
 
+        rendering_options['time_steps'] = None
         out = self.run_model(planes, decoder, sample_coordinates, rendering_options)
         colors_coarse, features = out['rgb'], out['features']
-        # import ipdb; ipdb.set_trace()
-        # colors_coarse = planes[:, 0, :, :64, :64].permute(0, 2, 3, 1).reshape((batch_size, -1, planes_ch)).contiguous()
-        # import ipdb; ipdb.set_trace()
 
-        return colors_coarse, features
+        # render peep video
+        norm_peep_cod = c[:, 3:5] * 2 - 1
+        video_coordinates = []
+        video_spatial_res = num_coordinates_per_axis // 2
+        vide_time_res = num_coordinates_per_axis * 4
+        for b_id in range(batch_size):
+            cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + video_spatial_res,
+                                   video_spatial_res, dtype=datatype, device=device)
+            cod_y = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + video_spatial_res,
+                                   video_spatial_res, dtype=datatype, device=device)
+            cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
+            grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
+            coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
+            video_coordinates.append(coordinates)
+
+        video_coordinates = torch.stack(video_coordinates, dim=0).reshape(batch_size, -1, 3)
+        rendering_options['neural_rendering_resolution'] = video_spatial_res
+        rendering_options['time_steps'] = vide_time_res
+        out = self.run_model(planes, decoder, video_coordinates, rendering_options)
+        peep_vid = out['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
+            .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
+
+        return colors_coarse, peep_vid, features
