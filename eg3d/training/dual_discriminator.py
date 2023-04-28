@@ -209,11 +209,11 @@ class DualPeepDicriminator(torch.nn.Module):
 
     def forward(self, img, c, update_emas=False, **block_kwargs):
         img_pair_logits = self.image_pair_discrim(img, c * 0, update_emas=update_emas, **block_kwargs)
-        b_size, c_ch, h, w, t_steps = img['peep_vid'].shape
+        # b_size, c_ch, h, w, t_steps = img['peep_vid'].shape
         vid_as_b_c_d_h_w = img['peep_vid'].permute(0, 1, 4, 2, 3)[:, :, ::2, :, :]
         vid_logits = self.vid_discrim(vid_as_b_c_d_h_w)
 
-        return img_pair_logits + vid_logits
+        return 0.1 * torch.nn.functional.softplus(img_pair_logits) + torch.nn.functional.softplus(vid_logits)
 
 
 
