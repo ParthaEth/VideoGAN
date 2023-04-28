@@ -31,6 +31,7 @@ from metrics import metric_main
 from camera_utils import LookAtPoseSampler
 from training.crosssection_utils import sample_cross_section
 from PIL import ImageDraw
+import imageio
 
 #----------------------------------------------------------------------------
 
@@ -69,8 +70,9 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
             label_groups[label] = [indices[(i + gw) % len(indices)] for i in range(len(indices))]
 
     # Load data.
-    images, _, labels = zip(*[training_set[i] for i in grid_indices])
-    return (gw, gh), np.stack(images), np.stack(labels)
+    images, peep_vids, labels = zip(*[training_set[i] for i in grid_indices])
+    # import ipdb; ipdb.set_trace()
+    return (gw, gh), np.stack(images), np.stack(labels), np.stack(peep_vids)
 
 #----------------------------------------------------------------------------
 
@@ -115,6 +117,28 @@ def save_image_grid(img, fname, drange, grid_size, labels=None):
         write_caption_to_image(img, coordinates_hw, captions, font_size=int((60/256)*H))
 
     img.save(fname)
+
+def save_video_grid(video, fname, drange, grid_size, labels=None):
+    lo, hi = drange
+    video = np.asarray(video, dtype=np.float32)
+    video = (video - lo) * (255 / (hi - lo))
+    video = np.rint(video).clip(0, 255).astype(np.uint8)
+    video[:, :, :, :2, :] = 255
+    video[:, :, :, -2:, :] = 255
+    video[:, :, -2:, :, :] = 255
+    video[:, :, :2, :, :] = 255
+
+    gw, gh = grid_size
+    _N, C, H, W, t = video.shape
+    video = video.reshape([gh, gw, C, H, W, t])
+    video = video.transpose(0, 3, 1, 4, 2, 5)
+    video = video.reshape([gh * H, gw * W, C, t])
+
+    video_out = imageio.get_writer(fname, mode='I', fps=30, codec='libx264')
+    for frame_id in range(t):
+        video_out.append_data(video[: ,:, :, frame_id])
+    video_out.close()
+
 
 #----------------------------------------------------------------------------
 
@@ -270,8 +294,10 @@ def training_loop(
     grid_c = None
     if rank == 0:
         print('Exporting sample images...')
-        grid_size, images, labels = setup_snapshot_image_grid(training_set=training_set)
+        grid_size, images, labels, peep_vids = setup_snapshot_image_grid(training_set=training_set)
         save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0, 255], grid_size=grid_size, labels=labels)
+        save_video_grid(peep_vids, os.path.join(run_dir, 'real_vids.mp4'), drange=[0, 255], grid_size=grid_size,
+                        labels=labels)
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
         labels[:, 0:3] *= 0
         labels[:, 2] = 1
