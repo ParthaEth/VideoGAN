@@ -213,7 +213,8 @@ class DualPeepDicriminator(torch.nn.Module):
         vid_as_b_c_d_h_w = img['peep_vid'].permute(0, 1, 4, 2, 3)[:, :, ::2, :, :]
         vid_logits = self.vid_discrim(vid_as_b_c_d_h_w)
 
-        return 0.1 * torch.nn.functional.softplus(img_pair_logits) + torch.nn.functional.softplus(vid_logits)
+        return 0.1*torch.nn.functional.softplus(img_pair_logits) + torch.nn.functional.softplus(vid_logits)
+        # return torch.nn.functional.softplus(vid_logits)
 
 
 

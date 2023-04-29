@@ -359,9 +359,9 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         video_spatial_res = num_coordinates_per_axis // 2
         vide_time_res = num_coordinates_per_axis * 4
         for b_id in range(batch_size):
-            cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + video_spatial_res,
+            cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2/4,
                                    video_spatial_res, dtype=datatype, device=device)
-            cod_y = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + video_spatial_res,
+            cod_y = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2/4,
                                    video_spatial_res, dtype=datatype, device=device)
             cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
             grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
