@@ -116,6 +116,8 @@ def create_samples(N=256, voxel_origin=[0, 0, 0], cube_length=2.0):
 @click.option('--reload_modules', help='Overload persistent modules?', type=bool, required=False, metavar='BOOL', default=False, show_default=True)
 @click.option('--axis', help='Axis perpendicular to which to take the frames', metavar='STR',
               type=click.Choice(['x', 'y', 't']), required=False, default='t')
+@click.option('--img_type', help='Make video of raw images or sr_iamges', metavar='STR',
+              type=click.Choice(['raw', 'sr_image']), required=False, default='t')
 
 def generate_images(
     network_pkl: str,
@@ -130,6 +132,7 @@ def generate_images(
     class_idx: Optional[int],
     reload_modules: bool,
     axis: str,
+    img_type:str,
 ):
     """Generate images using pretrained network pickle.
 
@@ -140,6 +143,10 @@ def generate_images(
     python gen_samples.py --outdir=output --trunc=0.7 --seeds=0-5 --shapes=True\\
         --network=ffhq-rebalanced-128.pkl
     """
+    if img_type.lower() == 'raw':
+        img_type = 'image_raw'
+    elif img_type.lower() == 'sr_image':
+        img_type = 'image'
 
     print('Loading networks from "%s"...' % network_pkl)
     device = torch.device('cuda')
@@ -161,7 +168,7 @@ def generate_images(
     b_size = 4
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
-        video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=60, codec='libx264')
+        video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=30, codec='libx264')
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim,).astype(np.float32)).to(device).repeat(b_size, 1)
         time_cod = torch.linspace(0, 1, G.img_resolution)
 
@@ -188,7 +195,7 @@ def generate_images(
             # import ipdb; ipdb.set_trace()
 
             ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
-            img_batch = G.synthesis(ws, conditioning_params, noise_mode='const')['image']
+            img_batch = G.synthesis(ws, conditioning_params, noise_mode='const')[img_type]
 
             img_batch = (img_batch.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
             for img in img_batch:
