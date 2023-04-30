@@ -78,20 +78,25 @@ def project_onto_planes(planes, coordinates):
 
 def sample_from_planes(plane_axes, plane_features, coordinates,
                        mode='bilinear',
-                       padding_mode='zeros', box_warp=None):
+                       padding_mode='zeros', box_warp=None,
+                       bypass_pass_network=False):
     assert padding_mode == 'zeros'
-    N, n_planes, C, H, W = plane_features.shape
-    _, M, _ = coordinates.shape
-    plane_features = plane_features.view(N*n_planes, C, H, W)
+    batch_size, n_planes, C, H, W = plane_features.shape
+    _, num_pts, _ = coordinates.shape
 
-    # coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
-    coordinates = box_warp * coordinates # TODO: add specific box bounds
+    if bypass_pass_network:
+        output_features = coordinates.view(batch_size, 1, num_pts, 3).repeat(1, n_planes, 1, 1)
+    else:
+        plane_features = plane_features.view(batch_size*n_planes, C, H, W)
 
-    projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
-    # import ipdb; ipdb.set_trace()
-    output_features = torch.nn.functional.grid_sample(
-        plane_features, projected_coordinates.float(), mode=mode, padding_mode=padding_mode,
-        align_corners=False).permute(0, 3, 2, 1).reshape(N, n_planes, M, C)
+        # coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
+        coordinates = box_warp * coordinates # TODO: add specific box bounds
+
+        projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
+        # import ipdb; ipdb.set_trace()
+        output_features = torch.nn.functional.grid_sample(
+            plane_features, projected_coordinates.float(), mode=mode, padding_mode=padding_mode,
+            align_corners=False).permute(0, 3, 2, 1).reshape(batch_size, n_planes, num_pts, C)
     return output_features
 
 def sample_from_3dgrid(grid, coordinates):
@@ -171,14 +176,15 @@ class ImportanceRenderer(torch.nn.Module):
 
         return rgb_final, depth_final, weights.sum(2)
 
-    def run_model(self, planes, decoder, sample_coordinates, options):
+    def run_model(self, planes, decoder, sample_coordinates, options, bypass_pass_network):
         sampled_features = sample_from_planes(self.plane_axes, planes, sample_coordinates, padding_mode='zeros',
-                                              box_warp=options['box_warp'])
+                                              box_warp=options['box_warp'], bypass_pass_network=bypass_pass_network)
 
         out = decoder(sampled_features, coordinates=sample_coordinates,
                       full_rendering_res=(options['neural_rendering_resolution'],
-                                     options['neural_rendering_resolution'],
-                                     options['time_steps']))
+                                          options['neural_rendering_resolution'],
+                                          options['time_steps']),
+                      bypass_pass_network=bypass_pass_network)
         if options.get('density_noise', 0) > 0:
             out['sigma'] += torch.randn_like(out['sigma']) * options['density_noise']
         return out
@@ -361,13 +367,14 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         for b_id in range(batch_size):
             cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2/4,
                                    video_spatial_res, dtype=datatype, device=device)
-            cod_y = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2/4,
+            cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2/4,
                                    video_spatial_res, dtype=datatype, device=device)
             cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
             grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
             coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
             video_coordinates.append(coordinates)
 
+        # import ipdb; ipdb.set_trace()
         video_coordinates = torch.stack(video_coordinates, dim=0).reshape(batch_size, -1, 3)
         rendering_options['neural_rendering_resolution'] = video_spatial_res
         rendering_options['time_steps'] = vide_time_res
