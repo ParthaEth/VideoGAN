@@ -277,6 +277,7 @@ class VideoFolderDataset(Dataset):
         return np.stack(vid_vol, axis=0).transpose(3, 1, 2, 0)
 
     def _load_raw_image(self, raw_idx, skip_cache=False):
+        # vid_vol = None
         fname = self._video_fnames[raw_idx]
         if getattr(self, 'cache_dir', None) is None or skip_cache:
             with self._open_file(fname) as f:
@@ -290,7 +291,7 @@ class VideoFolderDataset(Dataset):
                 vid_vol = self.get_from_cached(fname)
 
         _, _, resolution, _ = vid_vol.shape
-        frame_location = np.random.randint(0, resolution, 1)[0]
+        frame_location = np.random.randint(0, resolution, 1)[0] * 0
         if self.return_video:
             if getattr(self, 'fixed_time_frames', True):
                 constant_axis = 't'
@@ -358,15 +359,7 @@ class VideoFolderDataset(Dataset):
         else:
             file_path = os.path.join(self.cache_dir, fname)
             if os.path.exists(file_path):
-                # cache hit
-                try:
-                    vid_vol = self.read_vid_from_file(file_path)
-                except OSError as e:
-                    print(f'Bad file {fname}. Removing from cache. \n {e}')
-                    os.remove(file_path)
-                    return None
-                return vid_vol
-
+                return self.read_vid_from_file(file_path)
             else:
                 return None
 

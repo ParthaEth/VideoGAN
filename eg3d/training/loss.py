@@ -90,8 +90,8 @@ class StyleGAN2Loss(Loss):
             img['image'] = augmented_pair[:, :img['image'].shape[1]]
             img['image_raw'] = torch.nn.functional.interpolate(augmented_pair[:, img['image'].shape[1]:], size=img['image_raw'].shape[2:], mode='bilinear', antialias=True)
 
-        logits = self.D(img, c, update_emas=update_emas)
-        return logits
+        logits, video_logits = self.D(img, c, update_emas=update_emas)
+        return logits, video_logits
 
     def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, peep_vid_real, gain, cur_nimg):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
@@ -136,10 +136,12 @@ class StyleGAN2Loss(Loss):
             with torch.autograd.profiler.record_function('Gmain_forward'):
                 gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob,
                                                             neural_rendering_resolution=neural_rendering_resolution)
-                gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma)
+                gen_logits, gen_video_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/fake', gen_logits)
+                training_stats.report('Loss/scores/fake', gen_video_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
-                loss_Gmain = -gen_logits
+                training_stats.report('Loss/signs/fake', gen_video_logits.sign())
+                loss_Gmain = torch.nn.functional.softplus(-gen_logits) + torch.nn.functional.softplus(-gen_video_logits)
                 training_stats.report('Loss/G/loss', loss_Gmain)
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()
@@ -263,10 +265,12 @@ class StyleGAN2Loss(Loss):
                 gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob,
                                                             neural_rendering_resolution=neural_rendering_resolution,
                                                             update_emas=True)
-                gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True)
+                gen_logits, gen_video_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True)
                 training_stats.report('Loss/scores/fake', gen_logits)
+                training_stats.report('Loss/scores/fake', gen_video_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
-                loss_Dgen = gen_logits
+                training_stats.report('Loss/signs/fake', gen_video_logits.sign())
+                loss_Dgen = torch.nn.functional.softplus(gen_logits) + torch.nn.functional.softplus(gen_video_logits)
             with torch.autograd.profiler.record_function('Dgen_backward'):
                 loss_Dgen.mean().mul(gain).backward()
 
@@ -281,13 +285,16 @@ class StyleGAN2Loss(Loss):
                 real_img_tmp = {'image': real_img_tmp_image, 'image_raw': real_img_tmp_image_raw,
                                 'peep_vid':peep_vid_real_temp}
 
-                real_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma)
+                real_logits, real_video_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/real', real_logits)
+                training_stats.report('Loss/scores/real', real_video_logits)
                 training_stats.report('Loss/signs/real', real_logits.sign())
+                training_stats.report('Loss/signs/real', real_video_logits.sign())
 
                 loss_Dreal = 0
                 if phase in ['Dmain', 'Dboth']:
-                    loss_Dreal = -real_logits
+                    loss_Dreal = torch.nn.functional.softplus(-real_logits) + \
+                                 torch.nn.functional.softplus(-real_video_logits)
                     training_stats.report('Loss/D/loss', loss_Dgen + loss_Dreal)
 
                 loss_Dr1 = 0
@@ -299,13 +306,18 @@ class StyleGAN2Loss(Loss):
                                 inputs=[real_img_tmp['image'], real_img_tmp['image_raw'], peep_vid_real_temp],
                                 create_graph=True, only_inputs=True, allow_unused=True)
 
+                            r1_vid_grads = torch.autograd.grad(
+                                outputs=[real_video_logits.sum()],
+                                inputs=[peep_vid_real_temp, ],
+                                create_graph=True, only_inputs=True, allow_unused=True)
+
                             r1_grads_image_pen = r1_grads_image_raw_pen = r1_grads_peep_vid_pen = 0
                             if r1_grads[0] is not None:
                                 r1_grads_image_pen = torch.nan_to_num(r1_grads[0]).square().sum([1,2,3])
                             if r1_grads[1] is not None:
                                 r1_grads_image_raw_pen = torch.nan_to_num(r1_grads[1]).square().sum([1,2,3])
-                            if r1_grads[2] is not None:
-                                r1_grads_peep_vid_pen = torch.nan_to_num(r1_grads[2]).square().sum()
+                            if r1_vid_grads[0] is not None:
+                                r1_grads_peep_vid_pen = torch.nan_to_num(r1_vid_grads[0]).square().sum()
                         r1_penalty = r1_grads_image_pen + r1_grads_image_raw_pen + r1_grads_peep_vid_pen
                     else:  # single discrimination
                         with torch.autograd.profiler.record_function('r1_grads'), conv2d_gradfix.no_weight_gradients():
