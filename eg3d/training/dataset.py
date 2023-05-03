@@ -282,6 +282,7 @@ class VideoFolderDataset(Dataset):
             with self._open_file(fname) as f:
                 vid_vol = self.read_vid_from_file(fname)
         else:
+            fname = os.path.basename(fname)
             vid_vol = self.get_from_cached(fname)
             if vid_vol is None:
                 # print(f'Cache miss! {fname}')
