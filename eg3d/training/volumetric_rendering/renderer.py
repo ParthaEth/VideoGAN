@@ -79,12 +79,12 @@ def project_onto_planes(planes, coordinates):
 def sample_from_planes(plane_axes, plane_features, coordinates,
                        mode='bilinear',
                        padding_mode='zeros', box_warp=None,
-                       bypass_pass_network=False):
+                       bypass_network=False):
     assert padding_mode == 'zeros'
     batch_size, n_planes, C, H, W = plane_features.shape
     _, num_pts, _ = coordinates.shape
 
-    if bypass_pass_network:
+    if bypass_network:
         output_features = coordinates.view(batch_size, 1, num_pts, 3).repeat(1, n_planes, 1, 1)
     else:
         plane_features = plane_features.view(batch_size*n_planes, C, H, W)
@@ -176,15 +176,15 @@ class ImportanceRenderer(torch.nn.Module):
 
         return rgb_final, depth_final, weights.sum(2)
 
-    def run_model(self, planes, decoder, sample_coordinates, options, bypass_pass_network):
+    def run_model(self, planes, decoder, sample_coordinates, options, bypass_network=False):
         sampled_features = sample_from_planes(self.plane_axes, planes, sample_coordinates, padding_mode='zeros',
-                                              box_warp=options['box_warp'], bypass_pass_network=bypass_pass_network)
+                                              box_warp=options['box_warp'], bypass_network=bypass_network)
 
         out = decoder(sampled_features, coordinates=sample_coordinates,
                       full_rendering_res=(options['neural_rendering_resolution'],
                                           options['neural_rendering_resolution'],
                                           options['time_steps']),
-                      bypass_pass_network=bypass_pass_network)
+                      bypass_network=bypass_network)
         if options.get('density_noise', 0) > 0:
             out['sigma'] += torch.randn_like(out['sigma']) * options['density_noise']
         return out
@@ -355,12 +355,13 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         # print(f'coord: {sample_coordinates[0, :2, :]}')
         # sample_directions = sample_coordinates
 
-        rendering_options['time_steps'] = None
+        rendering_options['time_steps'] = 1
         out = self.run_model(planes, decoder, sample_coordinates, rendering_options)
         colors_coarse, features = out['rgb'], out['features']
 
         # render peep video
-        norm_peep_cod = c[:, 3:5] * 2 - 1
+        norm_peep_cod = c[:, 4:6] * 2 - 1
+        assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
         video_coordinates = []
         video_spatial_res = num_coordinates_per_axis // 2
         vide_time_res = num_coordinates_per_axis * 4

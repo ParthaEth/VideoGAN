@@ -48,7 +48,7 @@ for b_id in range(batch_size):
 video_coordinates = torch.stack(video_coordinates, dim=0).reshape(batch_size, -1, 3)
 planes = torch.zeros((batch_size, 6, 32, 64, 64))
 rend_cods = renderer.run_model(planes=planes, decoder=decoder, sample_coordinates=video_coordinates, options=options,
-                   bypass_pass_network=True)
+                               bypass_network=True)
 peep_vid = rend_cods['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
             .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
 peep_vid[0,:2, :, :, 0]

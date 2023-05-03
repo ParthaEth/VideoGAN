@@ -120,8 +120,7 @@ class Dataset(torch.utils.data.Dataset):
         label = self.get_label(idx)
         if len(label) > 0:
             label[0:6] = aug_label
-            # if not (int(label[2]) == 1 and label[3] < 2/256):
-            #     label[4:] *= 0
+        # import ipdb; ipdb.set_trace()
         return image.copy(), peep_vid, label
 
     def get_label(self, idx):
@@ -279,7 +278,6 @@ class VideoFolderDataset(Dataset):
 
     def _load_raw_image(self, raw_idx, skip_cache=False):
         fname = self._video_fnames[raw_idx]
-        lbl_cond = [0, 0, 1, 0, 0]
         if getattr(self, 'cache_dir', None) is None or skip_cache:
             with self._open_file(fname) as f:
                 vid_vol = self.read_vid_from_file(fname)

@@ -234,7 +234,7 @@ class OSGDecoder(torch.nn.Module):
         #      Conv2dLayer(in_channels=n_features, out_channels=options['decoder_output_dim'], kernel_size=1,
         #                  activation='relu'),])
 
-    def forward(self, sampled_features, coordinates, full_rendering_res, bypass_pass_network=False):
+    def forward(self, sampled_features, coordinates, full_rendering_res, bypass_network=False):
         # Aggregate features
         # print(f'feature:{sampled_features[0, :, 100, :4]}')
         # sampled_features = sampled_features.mean(1, keepdim=True)
@@ -264,7 +264,7 @@ class OSGDecoder(torch.nn.Module):
         synth_h = x # * 0.01 / 1.9
         # x = ScaleForwardIdentityBackward.apply(x, 0.005952380952380953)
         # import ipdb; ipdb.set_trace()
-        if bypass_pass_network:
+        if bypass_network:
             # Jsust for debug purpose
             img = synth_h[:, :3]
         else:
