@@ -18,6 +18,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_utils import misc, persistence
 from torch_utils.ops import bias_act, upfirdn2d
+from training.networks_stylegan2 import MappingNetwork
+import numpy as np
 
 # =====================================================================================================================
 
@@ -349,6 +351,7 @@ class DiscriminatorEpilogue(nn.Module):
     num_linear_layers: int = 2
     conv_clamp: Optional[int] = 256
     num_downsamples: int = 0
+    cmap_dim: int = 0
 
     def __post_init__(self, **_kwargs):
         super().__init__()
@@ -386,7 +389,7 @@ class DiscriminatorEpilogue(nn.Module):
                 in_channels = self.channels
 
             if index == self.num_linear_layers - 1:
-                out_channels = 1
+                out_channels = 1 if self.cmap_dim == 0 else self.cmap_dim
                 activation = "linear"
             else:
                 out_channels = self.channels
@@ -395,7 +398,7 @@ class DiscriminatorEpilogue(nn.Module):
             layer = FullyConnectedLayer(in_channels, out_channels, activation=activation)
             setattr(self, layer_name, layer)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, cmap: torch.Tensor) -> torch.Tensor:
         misc.assert_shape(input, (None, self.in_channels, self.in_seq_length, self.in_res, self.in_res))
 
         features = input.type(torch.float32)
@@ -409,6 +412,11 @@ class DiscriminatorEpilogue(nn.Module):
         for layer_name in self.linear_layer_names:
             layer = getattr(self, layer_name)
             features = layer(features)
+
+        # Conditioning.
+        if self.cmap_dim > 0:
+            misc.assert_shape(cmap, [None, self.cmap_dim])
+            features = (features * cmap).sum(dim=1, keepdim=True) * (1 / np.sqrt(self.cmap_dim))
 
         return features
 
@@ -431,12 +439,15 @@ class VideoDiscriminator(nn.Module):
     temporal_ksize_1: Optional[int] = None
     conv_clamp: Optional[int] = 256
     num_fp16_res: int = 0
+    cmap_dim : int = 0
 
     epilogue_kwargs: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
         super().__init__()
 
+        if self.cmap_dim > 0:
+            self.mapping = MappingNetwork(z_dim=0, c_dim=self.cmap_dim, w_dim=self.cmap_dim, num_ws=None, w_avg_beta=None)
         # fmt: off
         kwargs = dict(spatial_ksize=self.spatial_ksize, temporal_ksize=self.temporal_ksize,
                       spatial_ksize_1=self.spatial_ksize_1, temporal_ksize_1=self.temporal_ksize_1,
@@ -459,14 +470,11 @@ class VideoDiscriminator(nn.Module):
             if block.temporal_down:
                 self.temporal_scale *= 2
 
-        self.epilogue = DiscriminatorEpilogue(
-            self.max_edge // self.spatail_scale,
-            self.seq_length // self.temporal_scale,
-            self.blocks[-1].out_channels,
-            **self.epilogue_kwargs,
-        )
+        self.epilogue = DiscriminatorEpilogue(self.max_edge // self.spatail_scale,
+                                              self.seq_length // self.temporal_scale, self.blocks[-1].out_channels,
+                                              cmap_dim=self.cmap_dim, **self.epilogue_kwargs,)
 
-    def forward(self, videos: torch.Tensor) -> torch.Tensor:
+    def forward(self, videos: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
         misc.assert_shape(videos, (None, self.channels, self.seq_length, None, None))
         assert videos.size(3) == self.max_edge or videos.size(4) == self.max_edge
 
@@ -474,8 +482,13 @@ class VideoDiscriminator(nn.Module):
         py = (self.max_edge - videos.size(3)) // 2
         features = F.pad(videos, (px, px, py, py))
 
+        if self.cmap_dim > 0:
+            cmap = self.mapping(None, cond)
+        else:
+            cmap = None
+
         for block in self.blocks:
             features = block(features)
 
-        logits = self.epilogue(features)
+        logits = self.epilogue(features, cmap)
         return logits
