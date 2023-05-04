@@ -291,7 +291,7 @@ class VideoFolderDataset(Dataset):
                 vid_vol = self.get_from_cached(fname)
 
         _, _, resolution, _ = vid_vol.shape
-        frame_location = np.random.randint(0, resolution, 1)[0] * 0
+        frame_location = np.random.randint(0, resolution, 1)[0]
         if self.return_video:
             if getattr(self, 'fixed_time_frames', True):
                 constant_axis = 't'
