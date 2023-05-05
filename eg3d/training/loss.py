@@ -141,7 +141,7 @@ class StyleGAN2Loss(Loss):
                 training_stats.report('Loss/scores/fake_vid', gen_video_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 training_stats.report('Loss/signs/fake_vid', gen_video_logits.sign())
-                loss_Gmain = torch.nn.functional.softplus(-gen_logits) # + torch.nn.functional.softplus(-gen_video_logits)
+                loss_Gmain = torch.nn.functional.softplus(-gen_logits) + torch.nn.functional.softplus(-gen_video_logits)
                 training_stats.report('Loss/G/loss', loss_Gmain)
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()
@@ -270,7 +270,7 @@ class StyleGAN2Loss(Loss):
                 training_stats.report('Loss/scores/fake_vid', gen_video_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 training_stats.report('Loss/signs/fake_vid', gen_video_logits.sign())
-                loss_Dgen = torch.nn.functional.softplus(gen_logits) #+ torch.nn.functional.softplus(gen_video_logits)
+                loss_Dgen = torch.nn.functional.softplus(gen_logits) + torch.nn.functional.softplus(gen_video_logits)
             with torch.autograd.profiler.record_function('Dgen_backward'):
                 loss_Dgen.mean().mul(gain).backward()
 
@@ -290,12 +290,11 @@ class StyleGAN2Loss(Loss):
                 training_stats.report('Loss/scores/real_vid', real_video_logits)
                 training_stats.report('Loss/signs/real', real_logits.sign())
                 training_stats.report('Loss/signs/real_vid', real_video_logits.sign())
-                # import ipdb; ipdb.set_trace()
 
                 loss_Dreal = 0
                 if phase in ['Dmain', 'Dboth']:
-                    loss_Dreal = torch.nn.functional.softplus(-real_logits) #+ \
-                                 # torch.nn.functional.softplus(-real_video_logits)
+                    loss_Dreal = torch.nn.functional.softplus(-real_logits) + \
+                                 torch.nn.functional.softplus(-real_video_logits)
                     training_stats.report('Loss/D/loss', loss_Dgen + loss_Dreal)
 
                 loss_Dr1 = 0

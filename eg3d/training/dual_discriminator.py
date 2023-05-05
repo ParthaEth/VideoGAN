@@ -204,16 +204,19 @@ class DualPeepDicriminator(torch.nn.Module):
                                                     epilogue_kwargs)
         video_color_channels = 256  # video frame chnannels
         video_resolution = img_resolution//8
-        sr_upsample_factor = 1
         # self.vid_discrim = VideoDiscriminator(seq_length=128, max_edge=32, channels=3)
 
     def forward(self, img, c, update_emas=False, **block_kwargs):
-        img_pair_logits = self.image_pair_discrim(img, c * 0, update_emas=update_emas, **block_kwargs)
-        # # b_size, c_ch, h, w, t_steps = img['peep_vid'].shape
+        cond_img_pair = c.clone()
+        cond_img_pair[:, 4:6] = cond_img_pair[:, 4:6] * 0
+        img_pair_logits = self.image_pair_discrim(img, cond_img_pair * 0, update_emas=update_emas, **block_kwargs)
+        vid_logits = img_pair_logits * 0  # just creating a face differentiable tensor
+        ## b_size, c_ch, h, w, t_steps = img['peep_vid'].shape
         # vid_as_b_c_d_h_w = img['peep_vid'].permute(0, 1, 4, 2, 3)[:, :, ::2, :, :]
         # vid_logits = self.vid_discrim(vid_as_b_c_d_h_w)
 
-        return img_pair_logits, 0*img_pair_logits
+        return img_pair_logits, vid_logits
+        # return torch.nn.functional.softplus(vid_logits)
 
 
 
