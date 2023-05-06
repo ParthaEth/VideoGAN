@@ -94,6 +94,9 @@ class StyleGAN2Loss(Loss):
         return logits, video_logits
 
     def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, peep_vid_real, gain, cur_nimg):
+        img_logit_to_video_logit_ratio = np.array([1.0, 1.0], dtype=np.float32)
+        img_logit_to_video_logit_ratio /= np.linalg.norm(img_logit_to_video_logit_ratio)
+        w_i_logit, w_v_logit = img_logit_to_video_logit_ratio
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
         if self.G.rendering_kwargs.get('density_reg', 0) == 0:
             phase = {'Greg': 'none', 'Gboth': 'Gmain'}.get(phase, phase)
@@ -141,7 +144,8 @@ class StyleGAN2Loss(Loss):
                 training_stats.report('Loss/scores/fake_vid', gen_video_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 training_stats.report('Loss/signs/fake_vid', gen_video_logits.sign())
-                loss_Gmain = torch.nn.functional.softplus(-gen_logits) + torch.nn.functional.softplus(-gen_video_logits)
+                loss_Gmain = w_i_logit * torch.nn.functional.softplus(-gen_logits) + \
+                             w_v_logit * torch.nn.functional.softplus(-gen_video_logits)
                 training_stats.report('Loss/G/loss', loss_Gmain)
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()
@@ -270,7 +274,8 @@ class StyleGAN2Loss(Loss):
                 training_stats.report('Loss/scores/fake_vid', gen_video_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 training_stats.report('Loss/signs/fake_vid', gen_video_logits.sign())
-                loss_Dgen = torch.nn.functional.softplus(gen_logits) + torch.nn.functional.softplus(gen_video_logits)
+                loss_Dgen = w_i_logit * torch.nn.functional.softplus(gen_logits) +\
+                            w_v_logit * torch.nn.functional.softplus(gen_video_logits)
             with torch.autograd.profiler.record_function('Dgen_backward'):
                 loss_Dgen.mean().mul(gain).backward()
 
@@ -293,8 +298,8 @@ class StyleGAN2Loss(Loss):
 
                 loss_Dreal = 0
                 if phase in ['Dmain', 'Dboth']:
-                    loss_Dreal = torch.nn.functional.softplus(-real_logits) + \
-                                 torch.nn.functional.softplus(-real_video_logits)
+                    loss_Dreal = w_i_logit * torch.nn.functional.softplus(-real_logits) + \
+                                 w_v_logit * torch.nn.functional.softplus(-real_video_logits)
                     training_stats.report('Loss/D/loss', loss_Dgen + loss_Dreal)
 
                 loss_Dr1 = 0

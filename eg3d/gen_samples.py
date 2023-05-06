@@ -117,7 +117,7 @@ def create_samples(N=256, voxel_origin=[0, 0, 0], cube_length=2.0):
 @click.option('--axis', help='Axis perpendicular to which to take the frames', metavar='STR',
               type=click.Choice(['x', 'y', 't']), required=False, default='t')
 @click.option('--img_type', help='Make video of raw images or sr_iamges', metavar='STR',
-              type=click.Choice(['raw', 'sr_image']), required=False, default='t')
+              type=click.Choice(['raw', 'sr_image']), required=False, default='sr_image')
 
 def generate_images(
     network_pkl: str,
