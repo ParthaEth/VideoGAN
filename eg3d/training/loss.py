@@ -94,7 +94,7 @@ class StyleGAN2Loss(Loss):
         return logits, video_logits
 
     def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, peep_vid_real, gain, cur_nimg):
-        img_logit_to_video_logit_ratio = np.array([1.0, 1.0], dtype=np.float32)
+        img_logit_to_video_logit_ratio = np.array([1.0, 0.2], dtype=np.float32)
         img_logit_to_video_logit_ratio /= np.linalg.norm(img_logit_to_video_logit_ratio)
         w_i_logit, w_v_logit = img_logit_to_video_logit_ratio
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
