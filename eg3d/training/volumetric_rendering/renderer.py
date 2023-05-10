@@ -77,7 +77,8 @@ def project_onto_planes(planes, coordinates):
 
 
 def sample_from_planes(plane_axes, plane_features, coordinates,
-                       mode='bilinear',
+                       # mode='bilinear',
+                       mode='bicubic',
                        padding_mode='zeros', box_warp=None,
                        bypass_network=False):
     assert padding_mode == 'zeros'

@@ -45,7 +45,7 @@ class TriPlaneGenerator(torch.nn.Module):
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
-        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=64,
+        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
                                           img_channels=self.plane_features * self.num_planes,
                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
@@ -212,7 +212,7 @@ class OSGDecoder(torch.nn.Module):
         self.synth_net = torch.nn.ModuleList([
             SynthesisBlock(in_channels=n_features * 3, out_channels=8 * n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1,
-                           activation='lrelu', kernel_size=1, architecture='orig',),
+                           activation='lrelu', kernel_size=3, architecture='orig',),
 
             SynthesisBlock(in_channels=8 * n_features, out_channels=n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1, kernel_size=1,
