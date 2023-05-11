@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 import shutil
 import imageio
+import pickle
 
 
 try:
@@ -213,7 +214,16 @@ class VideoFolderDataset(Dataset):
             self._type = 'dir'
             # self._all_fnames = {os.path.relpath(os.path.join(root, fname), start=self._path) for root, _dirs, files in os.walk(self._path) for fname in files}
             # self._all_fnames = {os.path.join(self._path, f'{fname_idx:05d}.mp4') for fname_idx in range(50_000)}
-            self._all_fnames = {os.path.join(self._path, f_name) for f_name in os.listdir(self._path) if f_name.endswith('.mp4')}
+            ls_cache = os.path.join(self._path, 'ls_cache.pkl')
+            if os.path.exists(ls_cache):
+                try:
+                    with open(ls_cache, 'rb') as f:
+                        self._all_fnames = pickle.load(f)
+                except Exception as e:
+                    os.remove(ls_cache)
+                    self.ls_dir_and_cache(ls_cache)
+            else:
+                self.ls_dir_and_cache(ls_cache)
         elif self._file_ext(self._path) == '.zip':
             self._type = 'zip'
             self._all_fnames = set(self._get_zipfile().namelist())
@@ -236,6 +246,12 @@ class VideoFolderDataset(Dataset):
         if resolution is not None and (raw_shape[2] != resolution or raw_shape[3] != resolution):
             raise IOError('Image files do not match the specified resolution')
         super().__init__(name=name, raw_shape=raw_shape, **super_kwargs)
+
+    def ls_dir_and_cache(self, ls_cache):
+        self._all_fnames = {os.path.join(self._path, f_name) for f_name in os.listdir(self._path) if
+                            f_name.endswith('.mp4')}
+        with open(ls_cache, 'wb') as f:
+            pickle.dump(self._all_fnames, f)
 
     @staticmethod
     def _file_ext(fname):

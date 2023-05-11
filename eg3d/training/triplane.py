@@ -40,8 +40,8 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
         self.plane_features = 32
-        self.num_planes = 6
-        self.renderer = AxisAligndProjectionRenderer(return_video, self.num_planes)
+        self.num_planes = 1
+        self.renderer = AxisAligndProjectionRenderer(return_video, self.plane_features)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
@@ -210,7 +210,7 @@ class OSGDecoder(torch.nn.Module):
         # self.rend_res = options['rend_res']
 
         self.synth_net = torch.nn.ModuleList([
-            SynthesisBlock(in_channels=n_features * 3, out_channels=8 * n_features, w_dim=4, resolution=None,
+            SynthesisBlock(in_channels=n_features, out_channels=8 * n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1,
                            activation='lrelu', kernel_size=1, architecture='orig',),
 
@@ -234,7 +234,7 @@ class OSGDecoder(torch.nn.Module):
         #      Conv2dLayer(in_channels=n_features, out_channels=options['decoder_output_dim'], kernel_size=1,
         #                  activation='relu'),])
 
-    def forward(self, sampled_features, coordinates, full_rendering_res, bypass_network=False):
+    def forward(self, sampled_features, full_rendering_res, bypass_network=False):
         # Aggregate features
         # print(f'feature:{sampled_features[0, :, 100, :4]}')
         # sampled_features = sampled_features.mean(1, keepdim=True)
@@ -242,7 +242,7 @@ class OSGDecoder(torch.nn.Module):
         time_steps = full_rendering_res[-1]
         batch_size, planes, num_pts, pln_chnls = sampled_features.shape
 
-        ws = torch.zeros((batch_size * planes // 3 * time_steps, 3, 4), dtype=sampled_features.dtype,
+        ws = torch.zeros((batch_size * time_steps, 3, 4), dtype=sampled_features.dtype,
                          device=sampled_features.device)
         # features received as -> b, num_planes, num_pts, feature_dim, where -> num_pts = row_cods * col_cods * t_cods
         x = sampled_features.permute(0, 2, 1, 3).reshape(batch_size, rend_cols, rend_cols, time_steps, planes,
@@ -252,7 +252,7 @@ class OSGDecoder(torch.nn.Module):
         x = x.permute(0, 3, 1, 2, 4, 5).reshape(batch_size * time_steps, rend_cols, rend_cols, planes, pln_chnls)
         # permuted to b, time_steps, rows, cols, num_planes, features then reshaped
         # -----------------------------------------------------------------------------------------------
-        x = x.permute(0, 3, 4, 1, 2).reshape(batch_size * time_steps * planes//3, 3 * pln_chnls, rend_cols,
+        x = x.permute(0, 3, 4, 1, 2).reshape(batch_size * time_steps * planes, pln_chnls, rend_cols,
                                              rend_cols)
         # permuted to b*time_steps, planes, plane_channels, rows, cols
         # -----------------------------------------------------------------------------------------------
@@ -284,10 +284,10 @@ class OSGDecoder(torch.nn.Module):
                 # x = mod_layer(x)
                 # synth_h = synth_h * x
 
-        img = img.reshape(batch_size, time_steps, planes//3, 3, rend_cols, rend_cols).sum(dim=2)
+        img = img.reshape(batch_size, time_steps, planes, 3, rend_cols, rend_cols).sum(dim=2)
         # b, time, color, row, col
         img = img.permute(0, 3, 4, 1, 2).reshape(batch_size, num_pts, 3)
-        synth_h = synth_h.view(batch_size, time_steps, planes//3, -1, rend_cols, rend_cols).sum(dim=2)
+        synth_h = synth_h.view(batch_size, time_steps, planes, -1, rend_cols, rend_cols).sum(dim=2)
         synth_h = synth_h.permute(0, 3, 4, 1, 2).reshape(batch_size, num_pts, -1)
 
         return {'rgb': img.squeeze(), 'features': synth_h.squeeze()}

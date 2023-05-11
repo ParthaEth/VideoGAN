@@ -21,109 +21,35 @@ import torch
 import torch.nn as nn
 
 from training.volumetric_rendering.ray_marcher import MipRayMarcher2
-from training.volumetric_rendering import math_utils
-import random
-
-def generate_planes(num_planes):
-    """
-    Defines planes by the three vectors that form the "axes" of the
-    plane. Should work with arbitrary number of planes and planes of
-    arbitrary orientation.
-    """
-    assert num_planes % 3 == 0, f'num_planes should be multiple of 3 given {num_planes}'
-    # return torch.tensor([[[1, 0, 0],
-    #                         [0, 1, 0],  #XY
-    #                         [0, 0, 1]],
-    #
-    #                         [[1, 0, 0],
-    #                         [0, 0, 1],  #XT
-    #                         [0, 1, 0]],
-    #
-    #                         [[0, 1, 0],
-    #                         [0, 0, 1],  # YT
-    #                         [1, 0, 0]]], dtype=torch.float32)
-    return torch.randn((num_planes, 3, 3), dtype=torch.float32)
-
-def project_onto_planes(planes, coordinates):
-    """
-    Does a projection of a 3D point onto a batch of 2D planes,
-    returning 2D plane coordinates.
-
-    Takes plane axes of shape n_planes, 3, 3
-    # Takes coordinates of shape N, M, 3
-    # returns projections of shape N*n_planes, M, 2
-    """
-    N, M, C = coordinates.shape
-    n_planes, _, _ = planes.shape
-
-    planes_x = planes[:, :, 0] / torch.linalg.norm(planes[:, :, 0], dim=-1, keepdim=True)
-    planes_y = planes[:, :, 1] / torch.linalg.norm(planes[:, :, 1], dim=-1, keepdim=True)
-    planes_y_perp = planes_y - planes_x * (torch.bmm(planes_x[:, None, :], planes_y[..., None]))[:, :, 0]
-    planes_y_perp = planes_y_perp / torch.linalg.norm(planes_y_perp, dim=1, keepdim=True)
-    planes_z = torch.cross(planes_x, planes_y_perp)
-    orthogonalized_planes = torch.cat([planes_x[..., None], planes_y_perp[..., None], planes_z[..., None]], dim=-1)
-
-    coordinates = coordinates.unsqueeze(1).expand(-1, n_planes, -1, -1).reshape(N*n_planes, M, 3)
-    cod_norms = torch.linalg.norm(coordinates, dim=-1, keepdim=True)
-    inv_planes = torch.linalg.inv(orthogonalized_planes).unsqueeze(0).expand(N, -1, -1, -1).reshape(N*n_planes, 3, 3)
-
-    # import ipdb; ipdb.set_trace()
-
-    projections = torch.bmm(coordinates, inv_planes)
-    proj_norm = torch.linalg.norm(projections, dim=-1, keepdim=True)
-    projections = projections * (cod_norms / proj_norm)
-    # import ipdb; ipdb.set_trace()
-    return projections[..., :2]
+from training.volumetric_rendering import math_utils, mh_projector
 
 
-def sample_from_planes(plane_axes, plane_features, coordinates,
-                       mode='bilinear',
-                       padding_mode='zeros', box_warp=None,
-                       bypass_network=False):
-    assert padding_mode == 'zeros'
-    batch_size, n_planes, C, H, W = plane_features.shape
-    _, num_pts, _ = coordinates.shape
+class SampleUsingMHA(torch.nn.Module):
+    def __init__(self, num_plane_features):
+        super().__init__()
+        self.projector = mh_projector.MHprojector(proj_dim=num_plane_features, pos_enc_embed_dim=128, num_heads=1,
+                                                  query_dim=3)
 
-    if bypass_network:
-        output_features = coordinates.view(batch_size, 1, num_pts, 3).repeat(1, n_planes, 1, 1)
-    else:
-        plane_features = plane_features.view(batch_size*n_planes, C, H, W)
+    def forward(self, plane_features, coordinates, bypass_network=False):
+        batch_size, n_planes, C, H, W = plane_features.shape
+        assert n_planes == 1
+        _, num_pts, _ = coordinates.shape
 
-        # coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
-        coordinates = box_warp * coordinates # TODO: add specific box bounds
-
-        projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
-        # import ipdb; ipdb.set_trace()
-        output_features = torch.nn.functional.grid_sample(
-            plane_features, projected_coordinates.float(), mode=mode, padding_mode=padding_mode,
-            align_corners=False).permute(0, 3, 2, 1).reshape(batch_size, n_planes, num_pts, C)
-    return output_features
-
-def sample_from_3dgrid(grid, coordinates):
-    """
-    Expects coordinates in shape (batch_size, num_points_per_batch, 3)
-    Expects grid in shape (1, channels, H, W, D)
-    (Also works if grid has batch size)
-    Returns sampled features of shape (batch_size, num_points_per_batch, feature_channels)
-    """
-    batch_size, n_coords, n_dims = coordinates.shape
-    sampled_features = torch.nn.functional.grid_sample(grid.expand(batch_size, -1, -1, -1, -1),
-                                                       coordinates.reshape(batch_size, 1, 1, -1, n_dims),
-                                                       mode='bilinear', padding_mode='zeros', align_corners=False)
-    N, C, H, W, D = sampled_features.shape
-    sampled_features = sampled_features.permute(0, 4, 3, 2, 1).reshape(N, H*W*D, C)
-    return sampled_features
+        if bypass_network:
+            output_features = coordinates.view(batch_size, 1, num_pts, 3).repeat(1, n_planes, 1, 1)
+        else:
+            # perform multihead attention on the planer features output : batch_size, n_planes, num_pts, C
+            output_features = self.projector(plane_features.squeeze(), coordinates)
+        return output_features[:, None, ...]
 
 
 class ImportanceRenderer(torch.nn.Module):
-    def __init__(self, num_planes):
+    def __init__(self, plane_feature_dim):
         super().__init__()
         self.ray_marcher = MipRayMarcher2()
-        self.plane_axes = torch.nn.Parameter(generate_planes(num_planes))
-        # self.plane_axes = generate_planes()
+        self.projector = SampleUsingMHA(plane_feature_dim)
 
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
-        self.plane_axes = self.plane_axes.to(ray_origins.device)
 
         if rendering_options['ray_start'] == rendering_options['ray_end'] == 'auto':
             ray_start, ray_end = math_utils.get_ray_limits_box(ray_origins, ray_directions, box_side_length=rendering_options['box_warp'])
@@ -177,10 +103,9 @@ class ImportanceRenderer(torch.nn.Module):
         return rgb_final, depth_final, weights.sum(2)
 
     def run_model(self, planes, decoder, sample_coordinates, options, bypass_network=False):
-        sampled_features = sample_from_planes(self.plane_axes, planes, sample_coordinates, padding_mode='zeros',
-                                              box_warp=options['box_warp'], bypass_network=bypass_network)
+        sampled_features = self.projector(planes, sample_coordinates, bypass_network=bypass_network)
 
-        out = decoder(sampled_features, coordinates=sample_coordinates,
+        out = decoder(sampled_features,
                       full_rendering_res=(options['neural_rendering_resolution'],
                                           options['neural_rendering_resolution'],
                                           options['time_steps']),
@@ -296,18 +221,16 @@ class ImportanceRenderer(torch.nn.Module):
 
 
 class AxisAligndProjectionRenderer(ImportanceRenderer):
-    def __init__(self, return_video, num_planes):
+    def __init__(self, return_video, plane_feature_dim):
         # self.neural_rendering_resolution = neural_rendering_resolution
         self.return_video = return_video
-        super().__init__(num_planes)
+        super().__init__(plane_feature_dim)
 
     def forward(self, planes, decoder, c, ray_directions, rendering_options):
         # assert ray_origins is None  # This will be ignored silently
         # assert ray_directions is None   # This will be ignored silently
         device = planes.device
         datatype = planes.dtype
-        self.plane_axes = self.plane_axes.to(device)
-        #
 
         batch_size, _, planes_ch, _, _ = planes.shape  # get batch size! ray_origins.shape
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
