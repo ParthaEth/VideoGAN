@@ -39,7 +39,7 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_resolution=img_resolution
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
-        self.plane_features = 32
+        self.plane_features = 96
         self.num_planes = 1
         self.renderer = AxisAligndProjectionRenderer(return_video, self.plane_features)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)

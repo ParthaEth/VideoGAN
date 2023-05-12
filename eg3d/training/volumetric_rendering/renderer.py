@@ -27,8 +27,8 @@ from training.volumetric_rendering import math_utils, mh_projector
 class SampleUsingMHA(torch.nn.Module):
     def __init__(self, num_plane_features):
         super().__init__()
-        self.projector = mh_projector.MHprojector(proj_dim=num_plane_features, pos_enc_embed_dim=128, num_heads=1,
-                                                  query_dim=3)
+        # self.projector = mh_projector.MHprojector(proj_dim=num_plane_features, num_heads=2)
+        self.projector = mh_projector.TransformerProjector(proj_dim=num_plane_features, num_heads=4)
 
     def forward(self, plane_features, coordinates, bypass_network=False):
         batch_size, n_planes, C, H, W = plane_features.shape
@@ -287,7 +287,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
         video_coordinates = []
         video_spatial_res = num_coordinates_per_axis // 2
-        vide_time_res = num_coordinates_per_axis * 4
+        vide_time_res = num_coordinates_per_axis // 4
         for b_id in range(batch_size):
             cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2/4,
                                    video_spatial_res, dtype=datatype, device=device)
