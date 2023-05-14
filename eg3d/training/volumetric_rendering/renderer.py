@@ -28,7 +28,7 @@ class SampleUsingMHA(torch.nn.Module):
     def __init__(self, num_plane_features):
         super().__init__()
         # self.projector = mh_projector.MHprojector(proj_dim=num_plane_features, num_heads=2)
-        self.projector = mh_projector.TransformerProjector(proj_dim=num_plane_features, num_heads=4)
+        self.projector = mh_projector.TransformerProjector(proj_dim=num_plane_features, num_heads=1)
 
     def forward(self, plane_features, coordinates, bypass_network=False):
         batch_size, n_planes, C, H, W = plane_features.shape

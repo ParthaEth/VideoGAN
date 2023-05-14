@@ -1,11 +1,13 @@
 import torch
 from positional_encodings.torch_encodings import PositionalEncodingPermute2D, PositionalEncodingPermute3D
+import numpy as np
+
 
 class PosEncGivenPos(torch.nn.Module):
     def __init__(self, proj_dim):
         super().__init__()
         std_pos_encoder = PositionalEncodingPermute3D(proj_dim)
-        pos_enc = std_pos_encoder(torch.zeros(1, proj_dim, 64, 64, 64))
+        pos_enc = std_pos_encoder(torch.zeros(1, proj_dim, 32, 32, 32))
         self.register_buffer('pos_enc', pos_enc)
 
     def forward(self, coordinates):
@@ -77,14 +79,40 @@ class MHprojector(torch.nn.Module):
 
         return attn_output.reshape(batch, num_pts, -1) # dim: batch, num_pts, features
 
+
 class TransformerProjector(torch.nn.Module):
     def __init__(self, proj_dim, num_heads):
         super().__init__()
         self.proj_dim = proj_dim
-        self.model = torch.nn.Transformer(d_model=proj_dim, nhead=num_heads, batch_first=True, num_encoder_layers=3,
-                                          num_decoder_layers=3, dim_feedforward=512,)
+        self.model = torch.nn.Transformer(d_model=proj_dim, nhead=num_heads, batch_first=True, num_encoder_layers=2,
+                                          num_decoder_layers=2, dim_feedforward=512,)
         self.planes_pos_encoder = PositionalEncodingPermute2D(proj_dim)
         self.q_map = PosEncGivenPos(proj_dim)
+        self.self_att_neighbourhood = 32
+        mask_for_img_pts = self.make_mask(64, 64, 1, self.self_att_neighbourhood)
+        mask_for_vid_pts = self.make_mask(32, 32, 16, self.self_att_neighbourhood)
+        self.target_masks = {64*64: mask_for_img_pts, 32*32*16: mask_for_vid_pts}
+
+    def make_mask(self, rows, cols, time_steps, neighbourhood_to_attend):
+        seq_len = np.prod([rows, cols, time_steps])
+        mask_for_img_pts = torch.ones((seq_len, seq_len), dtype=torch.bool)
+        mask_row = 0
+        for row in range(rows):
+            for col in range(cols):
+                for time in range(time_steps):
+                    mask_this_row = torch.ones((rows, cols, time_steps), dtype=torch.bool)
+                    first_neighbour_row = max(0, row - neighbourhood_to_attend // 2)
+                    first_neighbour_col = max(0, col - neighbourhood_to_attend // 2)
+                    # first_neighbour_time = max(0, time - neighbourhood_to_attend // 2)
+
+                    mask_this_row[first_neighbour_row:row + neighbourhood_to_attend // 2,
+                                  first_neighbour_col:col + neighbourhood_to_attend // 2,
+                                  # first_neighbour_time:time + neighbourhood_to_attend // 2, ] = False
+                                  time] = False
+                    mask_for_img_pts[mask_row, :] = mask_this_row.flatten()
+                    mask_row += 1
+
+        return mask_for_img_pts.squeeze()
 
     def forward(self,  plane_features, query_pt):
         batch, ch, h, w = plane_features.shape
@@ -98,5 +126,16 @@ class TransformerProjector(torch.nn.Module):
 
         query_pt = self.q_map(query_pt)
         # import ipdb; ipdb.set_trace()
-        transformed_out = self.model(plane_features, query_pt)
+        # transformed_out = []
+        # split_axis = 1
+        # for plane_features_chunk, query_pt_chunk in zip(plane_features.split(1, dim=0), query_pt.split(1, dim=0)):
+        #     transformed_out_chunk = self.model(plane_features_chunk, query_pt_chunk)
+        #     transformed_out.append(transformed_out_chunk)
+        # for query_pt_chunk in query_pt.split(query_pt.shape[1]//4, dim=split_axis):
+        #     transformed_out_chunk = self.model(plane_features, query_pt_chunk)
+        #     transformed_out.append(transformed_out_chunk)
+        # transformed_out = self.model(plane_features, query_pt, tgt_mask=self.target_masks[num_pts].to(query_pt.device),)
+        transformed_out = self.model(plane_features, query_pt, tgt_mask=None)
+        # import ipdb; ipdb.set_trace()
+        # return torch.cat(transformed_out, dim=split_axis)
         return transformed_out
