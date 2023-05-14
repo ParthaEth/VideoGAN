@@ -200,6 +200,7 @@ class VideoFolderDataset(Dataset):
         path,                   # Path to directory or zip.
         resolution      = None, # Ensure specific resolution, None = highest available.
         return_video    = False,
+        num_frames      = 16,
         **super_kwargs,         # Additional arguments for the Dataset base class.
     ):
         self._path = path
@@ -208,6 +209,7 @@ class VideoFolderDataset(Dataset):
         max_warnings = 1
         self.axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
         self.peep_window_crop_size = 64
+        self.num_frames=num_frames
         # self.peep_window_rescale_size = 32
 
         if os.path.isdir(self._path):
@@ -332,8 +334,11 @@ class VideoFolderDataset(Dataset):
             if peep_location is None:
                 peep_vid = 'None'
             else:
-                peep_vid = vid_vol[:, peep_location[0]:peep_location[0]+self.peep_window_crop_size,
-                                      peep_location[1]:peep_location[1]+self.peep_window_crop_size, ::16]
+                num_frame_step_size = vid_vol.shape[-1]//self.num_frames
+                peep_vid = vid_vol[:,
+                                   peep_location[0]:peep_location[0]+self.peep_window_crop_size,
+                                   peep_location[1]:peep_location[1]+self.peep_window_crop_size,
+                                   ::num_frame_step_size]
 
         return image, peep_vid, np.array(lbl_cond)
 

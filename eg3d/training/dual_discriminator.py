@@ -193,6 +193,7 @@ class DualPeepDicriminator(torch.nn.Module):
         conv_clamp          = 256,      # Clamp the output of convolution layers to +-X, None = disable clamping.
         cmap_dim            = None,     # Dimensionality of mapped conditioning label, None = default.
         disc_c_noise        = 0,        # Corrupt camera parameters with X std dev of noise before disc. pose conditioning.
+        num_vid_frames      = 16,       # sequence length of the peep discriminator
         block_kwargs        = {},       # Arguments for DiscriminatorBlock.
         mapping_kwargs      = {},       # Arguments for MappingNetwork.
         epilogue_kwargs     = {},       # Arguments for DiscriminatorEpilogue.
@@ -202,9 +203,10 @@ class DualPeepDicriminator(torch.nn.Module):
                                                     channel_base, channel_max, num_fp16_res, conv_clamp,
                                                     cmap_dim, disc_c_noise, block_kwargs, mapping_kwargs,
                                                     epilogue_kwargs)
-        video_color_channels = 256  # video frame chnannels
+
         video_resolution = img_resolution//8
-        self.vid_discrim = VideoDiscriminator(seq_length=16, max_edge=32, channels=3, cmap_dim=c_dim)
+        self.vid_discrim = VideoDiscriminator(seq_length=num_vid_frames, max_edge=video_resolution, channels=3,
+                                              cmap_dim=c_dim)
 
     def forward(self, img, c, update_emas=False, **block_kwargs):
         cond_img_pair = c.clone()

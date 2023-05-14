@@ -1,6 +1,7 @@
 import torch
 from positional_encodings.torch_encodings import PositionalEncodingPermute2D, PositionalEncodingPermute3D
 import numpy as np
+from transformers import LEDConfig, LEDModel
 
 
 class PosEncGivenPos(torch.nn.Module):
@@ -84,8 +85,23 @@ class TransformerProjector(torch.nn.Module):
     def __init__(self, proj_dim, num_heads):
         super().__init__()
         self.proj_dim = proj_dim
-        self.model = torch.nn.Transformer(d_model=proj_dim, nhead=num_heads, batch_first=True, num_encoder_layers=2,
-                                          num_decoder_layers=2, dim_feedforward=512,)
+        # self.model = torch.nn.Transformer(d_model=proj_dim, nhead=num_heads, batch_first=True, num_encoder_layers=2,
+        #                                   num_decoder_layers=2, dim_feedforward=512,)
+
+        configuration = LEDConfig()
+        configuration.attention_window = 1024
+        configuration.vocab_size = 1
+        configuration.d_model = proj_dim
+        configuration.decoder_start_token_id = 0
+        configuration.pad_token_id = 0
+        configuration.max_encoder_position_embeddings = 4096
+        configuration.max_decoder_position_embeddings = 16384
+        configuration.decoder_ffn_dim = configuration.encoder_ffn_dim = 1024
+        configuration.decoder_attention_heads = configuration.encoder_attention_heads = num_heads
+        configuration.decoder_layers = configuration.encoder_layers = 6
+
+        self.model = LEDModel(configuration)
+
         self.planes_pos_encoder = PositionalEncodingPermute2D(proj_dim)
         self.q_map = PosEncGivenPos(proj_dim)
         self.self_att_neighbourhood = 32
@@ -135,7 +151,8 @@ class TransformerProjector(torch.nn.Module):
         #     transformed_out_chunk = self.model(plane_features, query_pt_chunk)
         #     transformed_out.append(transformed_out_chunk)
         # transformed_out = self.model(plane_features, query_pt, tgt_mask=self.target_masks[num_pts].to(query_pt.device),)
-        transformed_out = self.model(plane_features, query_pt, tgt_mask=None)
+        transformed_out = self.model(inputs_embeds=plane_features, decoder_inputs_embeds=query_pt,
+                                     return_dict=True)['last_hidden_state']
         # import ipdb; ipdb.set_trace()
         # return torch.cat(transformed_out, dim=split_axis)
         return transformed_out

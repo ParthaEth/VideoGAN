@@ -104,11 +104,12 @@ def launch_training(c, desc, outdir, dry_run):
 
 #----------------------------------------------------------------------------
 
-def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames):
+
+def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames, num_frames):
     try:
         dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data, use_labels=True,
                                          max_size=None, xflip=False, return_video=return_video, cache_dir=cache_dir,
-                                         fixed_time_frames=fixed_time_frames)
+                                         fixed_time_frames=fixed_time_frames, num_frames=num_frames)
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # Subclass of training.dataset.Dataset.
         dataset_kwargs.resolution = dataset_obj.resolution # Be explicit about resolution.
         dataset_kwargs.use_labels = dataset_obj.has_labels # Be explicit about labels.
@@ -198,6 +199,7 @@ def parse_comma_separated_list(s):
 @click.option('--renderer_lr_mult',    help='backbone learning rate multiplier.', metavar='FLOAT', type=click.FloatRange(min=0), default=1, required=False, show_default=True)
 @click.option('--decoder_lr_mult',    help='backbone learning rate multiplier.', metavar='FLOAT', type=click.FloatRange(min=0), default=1, required=False, show_default=True)
 @click.option('--return_video',    help='Every image will be zoomed to make video', metavar='BOOL', type=bool, required=False, default=False)
+@click.option('--num_frames',    help='How many timesteps will there be in every clip', type=int, required=False, default=4)
 @click.option('--discrim_type',    help='What type of discriminator to use (DualDiscriminator, AxisAlignedDiscriminator, DualPeepDicriminator) ', metavar='STR', type=str, required=False, default='AxisAlignedDiscriminator')
 @click.option('--fixed_time_frames', help='Take slice of videos always perpendicular to time axis', metavar='BOOL',
               type=bool, default=False, show_default=True)
@@ -229,8 +231,9 @@ def main(**kwargs):
     c = dnnlib.EasyDict() # Main config dict.
     c.G_kwargs = dnnlib.EasyDict(class_name=None, z_dim=512, w_dim=512, return_video=opts.return_video,
                                  mapping_kwargs=dnnlib.EasyDict())
-    c.D_kwargs = dnnlib.EasyDict(class_name='training.networks_stylegan2.Discriminator', block_kwargs=dnnlib.EasyDict(),
-                                 mapping_kwargs=dnnlib.EasyDict(), epilogue_kwargs=dnnlib.EasyDict())
+    c.D_kwargs = dnnlib.EasyDict(class_name='training.networks_stylegan2.Discriminator', num_vid_frames=opts.num_frames,
+                                 block_kwargs=dnnlib.EasyDict(), mapping_kwargs=dnnlib.EasyDict(),
+                                 epilogue_kwargs=dnnlib.EasyDict())
     c.G_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8,
                                      backbone_lr_mult=opts.backbone_lr_mult, decoder_lr_mult=opts.decoder_lr_mult,
                                      renderer_lr_mult=opts.renderer_lr_mult)
@@ -241,7 +244,7 @@ def main(**kwargs):
     # Training set.
     c.training_set_kwargs, dataset_name = init_dataset_kwargs(
         data=opts.data, return_video=opts.return_video, cache_dir=opts.d_set_cache_dir,
-        fixed_time_frames=opts.fixed_time_frames)
+        fixed_time_frames=opts.fixed_time_frames, num_frames=opts.num_frames)
     if opts.cond and not c.training_set_kwargs.use_labels:
         raise click.ClickException('--cond=True requires labels specified in dataset.json')
     c.training_set_kwargs.use_labels = opts.cond
@@ -313,6 +316,7 @@ def main(**kwargs):
         'density_reg_p_dist': opts.density_reg_p_dist, # distance at which to sample perturbed points for density regularization
         'reg_type': opts.reg_type, # for experimenting with variations on density regularization
         'sr_antialias': True,
+        'time_steps': opts.num_frames,
     }
 
     if opts.cfg == 'ffhq':

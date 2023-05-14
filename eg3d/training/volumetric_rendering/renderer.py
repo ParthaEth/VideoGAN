@@ -102,14 +102,18 @@ class ImportanceRenderer(torch.nn.Module):
 
         return rgb_final, depth_final, weights.sum(2)
 
-    def run_model(self, planes, decoder, sample_coordinates, options, bypass_network=False):
+    def run_model(self, planes, decoder, sample_coordinates, options, render_one_frame, bypass_network=False):
         sampled_features = self.projector(planes, sample_coordinates, bypass_network=bypass_network)
+        if render_one_frame:
+            full_rendering_res = (options['neural_rendering_resolution'],
+                                  options['neural_rendering_resolution'],
+                                  1)
+        else:
+            full_rendering_res = (options['neural_rendering_resolution'],
+                                  options['neural_rendering_resolution'],
+                                  options['time_steps'])
 
-        out = decoder(sampled_features,
-                      full_rendering_res=(options['neural_rendering_resolution'],
-                                          options['neural_rendering_resolution'],
-                                          options['time_steps']),
-                      bypass_network=bypass_network)
+        out = decoder(sampled_features, full_rendering_res, bypass_network=bypass_network)
         if options.get('density_noise', 0) > 0:
             out['sigma'] += torch.randn_like(out['sigma']) * options['density_noise']
         return out
@@ -278,8 +282,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         # print(f'coord: {sample_coordinates[0, :2, :]}')
         # sample_directions = sample_coordinates
 
-        rendering_options['time_steps'] = 1
-        out = self.run_model(planes, decoder, sample_coordinates, rendering_options)
+        out = self.run_model(planes, decoder, sample_coordinates, rendering_options, render_one_frame=True)
         colors_coarse, features = out['rgb'], out['features']
 
         # render peep video
@@ -287,7 +290,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
         video_coordinates = []
         video_spatial_res = num_coordinates_per_axis // 2
-        vide_time_res = num_coordinates_per_axis // 4
+        vide_time_res = rendering_options['time_steps']
         for b_id in range(batch_size):
             cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2/4,
                                    video_spatial_res, dtype=datatype, device=device)
@@ -301,8 +304,8 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         # import ipdb; ipdb.set_trace()
         video_coordinates = torch.stack(video_coordinates, dim=0).reshape(batch_size, -1, 3)
         rendering_options['neural_rendering_resolution'] = video_spatial_res
-        rendering_options['time_steps'] = vide_time_res
-        out = self.run_model(planes, decoder, video_coordinates, rendering_options)
+        # rendering_options['time_steps'] = vide_time_res
+        out = self.run_model(planes, decoder, video_coordinates, rendering_options, render_one_frame=False)
         peep_vid = out['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
             .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
 
