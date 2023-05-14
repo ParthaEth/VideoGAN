@@ -17,8 +17,9 @@ Code adapted from
 import os
 import re
 import json
-import tempfile
-import torch
+import sys
+sys.path.append(os.getcwd())
+sys.path.append(os.path.join(os.getcwd(), '../'))
 
 import dnnlib
 from training import training_loop
@@ -27,6 +28,8 @@ from torch_utils import training_stats
 from torch_utils import custom_ops
 from MultiMachineMPICluster.mmmc import launcher
 import argparse
+
+
 
 
 def launch_training(c, desc, outdir, dry_run, rank):
@@ -110,37 +113,37 @@ def main(local_rank, global_rank, num_gpus):
     fixed_time_frames = True
     cond = True
     mirror = False
-    batch = 32
+    batch = 4 #############################################################################
     cbase = 32768
     cmax = 512
-    map_depth = None
+    map_depth = 2
     freezed = 0
-    mbstd_group = None
+    mbstd_group = 4
     gamma = 1
     glr = None
     cfg = 'ffhq'
     dlr = 0.002
-    metrics = 'none', 'fid10k, fid50k'
+    metrics = parse_comma_separated_list('none')  # 'none', 'fid10k, fid50k'
     kimg = 25000
     tick = 4
     snap = 20
     seed = 0
-    workers = 16
+    workers = 1 #################################################################################################
     discrim_type = 'DualPeepDicriminator' #DualDiscriminator, AxisAlignedDiscriminator, DualPeepDicriminator
     disc_c_noise = 0
     force_sr_module = None
     gen_pose_cond = False
     gpc_reg_prob = 0.5
-    c_scale = None
-    sr_noise_mode = None
+    c_scale = 0
+    sr_noise_mode = 'none'
     density_reg = 0.25
     density_reg_p_dist = 0.004
     reg_type = 'l1'
     density_reg_every = 4
     blur_fade_kimg = 200
     gpc_reg_fade_kimg = 1000
-    neural_rendering_resolution_initial = 64
-    neural_rendering_resolution_final = None
+    neural_rendering_resolution_initial = 256
+    neural_rendering_resolution_final = 256
     neural_rendering_resolution_fade_kimg = 1000
     sr_num_fp16_res = 4
     style_mixing_prob = 0
@@ -232,7 +235,7 @@ def main(local_rank, global_rank, num_gpus):
 
     if force_sr_module != None:
         sr_module = force_sr_module
-    
+
     rendering_options = {
         'image_resolution': c.training_set_kwargs.resolution,
         'disparity_space_sampling': False,
@@ -254,7 +257,7 @@ def main(local_rank, global_rank, num_gpus):
             'depth_resolution': 48, # number of uniform samples to take per ray.
             'depth_resolution_importance': 48, # number of importance samples to take per ray.
             'ray_start': 2.25, # near point along each ray to start taking samples.
-            'ray_end': 3.3, # far point along each ray to stop taking samples. 
+            'ray_end': 3.3, # far point along each ray to stop taking samples.
             'box_warp': 1, # the side-length of the bounding box spanned by the tri-planes; box_warp=1 means [-0.5, -0.5, -0.5] -> [0.5, 0.5, 0.5].
             'avg_camera_radius': 2.7, # used only in the visualizer to specify camera orbit radius.
             'avg_camera_pivot': [0, 0, 0.2], # used only in the visualizer to control center of camera rotation.
