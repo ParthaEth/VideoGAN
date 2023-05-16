@@ -24,8 +24,7 @@ class LayerMhAttentionAndFeedForward(torch.nn.Module):
     def __init__(self, proj_dim, num_heads):
         super().__init__()
         self.mha = torch.nn.MultiheadAttention(proj_dim, num_heads, dropout=0.1, bias=True, add_bias_kv=False,
-                                               add_zero_attn=False, kdim=proj_dim + proj_dim,
-                                               vdim=proj_dim + proj_dim,
+                                               add_zero_attn=False, kdim=proj_dim, vdim=proj_dim,
                                                batch_first=True, device=None, dtype=None)
         self.layer_norm1 = torch.nn.LayerNorm(proj_dim)
         self.feed_forward = torch.nn.Sequential(torch.nn.Linear(proj_dim, proj_dim),
@@ -48,9 +47,9 @@ class MHprojector(torch.nn.Module):
         self.q_map = PosEncGivenPos(proj_dim)
 
         self.attn_mod1 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
-        self.attn_mod2 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
-        self.attn_mod3 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
-        self.attn_mod4 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
+        # self.attn_mod2 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
+        # self.attn_mod3 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
+        # self.attn_mod4 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
 
         self.final_lin = torch.nn.Linear(proj_dim, proj_dim)
 
@@ -61,20 +60,15 @@ class MHprojector(torch.nn.Module):
         """
         batch, ch, h, w = plane_features.shape
         assert self.proj_dim == ch
-        key_val_feature_planes = torch.cat((plane_features, self.planes_pos_encoder(plane_features)), dim=1)
-        key_val_feature_planes = key_val_feature_planes.permute(0, 2, 3, 1)  # batch, h, w, ch
-
-        key_val_feature_planes = key_val_feature_planes.reshape(batch, h * w, self.proj_dim + self.proj_dim)
+        keys = self.planes_pos_encoder(plane_features).permute(0, 2, 3, 1).reshape(batch, h * w, self.proj_dim)
+        values = plane_features.permute(0, 2, 3, 1).reshape(batch, h * w, self.proj_dim)
 
         # import ipdb; ipdb.set_trace()
         batch, num_pts, pt_dim = query_pt.shape
         assert pt_dim == 3
 
         query_pt = self.q_map(query_pt)
-        attn_output = self.attn_mod1(query_pt, key_val_feature_planes, key_val_feature_planes)
-        attn_output = self.attn_mod2(attn_output, key_val_feature_planes, key_val_feature_planes)
-        attn_output = self.attn_mod3(attn_output, key_val_feature_planes, key_val_feature_planes)
-        attn_output = self.attn_mod4(attn_output, key_val_feature_planes, key_val_feature_planes)
+        attn_output = self.attn_mod1(query_pt, keys, values)
 
         attn_output = self.final_lin(attn_output)
 

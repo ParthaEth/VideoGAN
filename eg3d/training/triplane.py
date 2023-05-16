@@ -39,13 +39,13 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_resolution=img_resolution
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
-        self.plane_features = 32
+        self.plane_features = 96 * 2
         self.num_planes = 1
         self.renderer = AxisAligndProjectionRenderer(return_video, self.plane_features)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
-        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=64,
+        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=128,
                                           img_channels=self.plane_features * self.num_planes,
                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
