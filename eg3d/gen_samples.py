@@ -157,6 +157,7 @@ def generate_images(
     if reload_modules:
         print("Reloading Modules!")
         G_new = TriPlaneGenerator(*G.init_args, **G.init_kwargs).eval().requires_grad_(False).to(device)
+        # comment the following line to see how an untrained attention looks like
         misc.copy_params_and_buffers(G, G_new, require_all=True)
         G_new.neural_rendering_resolution = G.neural_rendering_resolution
         G_new.rendering_kwargs = G.rendering_kwargs
@@ -166,13 +167,14 @@ def generate_images(
 
     # Generate batch of images.
     b_size = 4
+    time_steps = 256
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
-        video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=30, codec='libx264')
+        video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=3, codec='libx264')
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim,).astype(np.float32)).to(device).repeat(b_size, 1)
-        time_cod = torch.linspace(0, 1, G.img_resolution)
+        time_cod = torch.linspace(0, 1, time_steps)
 
-        batches = G.img_resolution // b_size
+        batches = time_steps // b_size
         # x0 = np.random.randint(0, 256 - 40)/256
         # y0 = np.random.randint(0, 256 - 40)/256
         # vel_p_frame = [0, 0]
@@ -195,9 +197,29 @@ def generate_images(
             # import ipdb; ipdb.set_trace()
 
             ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
-            img_batch = G.synthesis(ws, conditioning_params, noise_mode='const')[img_type]
+            # generated_objects = G.synthesis(ws, conditioning_params, noise_mode='random')
+            generated_objects = G.synthesis(ws, conditioning_params, noise_mode='const')
+            img_batch = generated_objects[img_type]
+            attn_masks = generated_objects['img_attention_mask']
+            batch, feture_size, feature_size, h, w = attn_masks.shape
+            # attn_masks_middle_pix = attn_masks[:, :, :, h//2, w//2][:, None, ...]
+            attn_masks_middle_pix = attn_masks.mean(dim=(3, 4))[:, None, ...]
+            attn_masks_middle_pix = attn_masks_middle_pix - attn_masks_middle_pix.min()
+            attn_masks_middle_pix /= attn_masks_middle_pix.max()
+
+            # import ipdb;ipdb.set_trace()
 
             img_batch = (img_batch.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
+            img_batch = torch.nn.functional.pad(img_batch,(0, 0, 2, 2, 2, 2), "constant", 255)
+            img_batch[:, img_batch.shape[1]//2-2:img_batch.shape[1]//2+2, img_batch.shape[1]//2-2:img_batch.shape[1]//2+2:, :] = 255
+            attn_masks_middle_pix = torch.nn.functional.interpolate(attn_masks_middle_pix,
+                                                                    (img_batch.shape[1]-4, img_batch.shape[2]-4),
+                                                                    align_corners=False, mode='bilinear')
+            attn_masks_middle_pix = \
+                (attn_masks_middle_pix.permute(0, 2, 3, 1) * 255).clamp(0, 255).to(torch.uint8)
+            attn_masks_middle_pix = attn_masks_middle_pix.repeat(1, 1, 1, 3)
+            attn_masks_middle_pix = torch.nn.functional.pad(attn_masks_middle_pix, (0, 0, 2, 2, 2, 2), "constant", 255)
+            img_batch = torch.cat((img_batch, attn_masks_middle_pix), dim=2)
             for img in img_batch:
                 video_out.append_data(img.cpu().numpy())
 

@@ -33,10 +33,11 @@ class LayerMhAttentionAndFeedForward(torch.nn.Module):
         self.layer_norm2 = torch.nn.LayerNorm(proj_dim)
 
     def forward(self, query_pt, key, val):
-        attn_output, _ = self.mha(query=query_pt, key=key, value=val)
+        attn_output, attn_weight = self.mha(query=query_pt, key=key, value=val, need_weights=True,
+                                            average_attn_weights=True)
         attn_output = self.layer_norm1(attn_output + query_pt)
         attn_output = attn_output + self.feed_forward(attn_output)
-        return self.layer_norm2(attn_output)
+        return self.layer_norm2(attn_output), attn_weight
 
 class MHprojector(torch.nn.Module):
     def __init__(self, proj_dim, num_heads):
@@ -68,11 +69,11 @@ class MHprojector(torch.nn.Module):
         assert pt_dim == 3
 
         query_pt = self.q_map(query_pt)
-        attn_output = self.attn_mod1(query_pt, keys, values)
+        attn_output, attn_mask = self.attn_mod1(query_pt, keys, values)
 
         attn_output = self.final_lin(attn_output)
 
-        return attn_output.reshape(batch, num_pts, -1) # dim: batch, num_pts, features
+        return attn_output.reshape(batch, num_pts, -1), attn_mask # dim: batch, num_pts, features
 
 
 class TransformerProjector(torch.nn.Module):
