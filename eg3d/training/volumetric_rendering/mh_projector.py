@@ -18,6 +18,7 @@ class PosEncGivenPos(torch.nn.Module):
         coordinates = coordinates.reshape(batch, d_out, h_out, w_out, 3)
         pe = torch.nn.functional.grid_sample(self.pos_enc.expand(batch, -1, -1, -1, -1), coordinates,
                                              align_corners=False, mode='bilinear')
+        # now pe \in R^(batch, color_channels, d_out, h_out, w_out)
         return pe.reshape(batch, -1, n_pts).permute(0, 2, 1)
 
 class LayerMhAttentionAndFeedForward(torch.nn.Module):
