@@ -27,7 +27,8 @@ from training.volumetric_rendering import math_utils, mh_projector
 class SampleUsingMHA(torch.nn.Module):
     def __init__(self, num_plane_features):
         super().__init__()
-        self.projector = mh_projector.MHprojector(proj_dim=num_plane_features, num_heads=4)
+        self.projector = mh_projector.MHprojector(motion_feature_dim=32, appearance_feature_dim=num_plane_features-32,
+                                                  num_heads=4)
         # self.projector = mh_projector.TransformerProjector(proj_dim=num_plane_features, num_heads=4)
 
     def forward(self, plane_features, coordinates, bypass_network=False):
