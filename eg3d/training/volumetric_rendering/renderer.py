@@ -27,8 +27,9 @@ from training.volumetric_rendering import math_utils, mh_projector
 class SampleUsingMHA(torch.nn.Module):
     def __init__(self, num_plane_features):
         super().__init__()
-        # self.projector = mh_projector.MHprojector(proj_dim=num_plane_features, num_heads=2)
-        self.projector = mh_projector.TransformerProjector(proj_dim=num_plane_features, num_heads=1)
+        self.projector = mh_projector.MHprojector(motion_feature_dim=32, appearance_feature_dim=num_plane_features-32,
+                                                  num_heads=4)
+        # self.projector = mh_projector.TransformerProjector(proj_dim=num_plane_features, num_heads=4)
 
     def forward(self, plane_features, coordinates, bypass_network=False):
         batch_size, n_planes, C, H, W = plane_features.shape
@@ -39,8 +40,8 @@ class SampleUsingMHA(torch.nn.Module):
             output_features = coordinates.view(batch_size, 1, num_pts, 3).repeat(1, n_planes, 1, 1)
         else:
             # perform multihead attention on the planer features output : batch_size, n_planes, num_pts, C
-            output_features = self.projector(plane_features.squeeze(), coordinates)
-        return output_features[:, None, ...]
+            output_features, attention_mask = self.projector(plane_features.squeeze(), coordinates)
+        return output_features[:, None, ...], attention_mask[:, None, ...]
 
 
 class ImportanceRenderer(torch.nn.Module):
@@ -103,7 +104,7 @@ class ImportanceRenderer(torch.nn.Module):
         return rgb_final, depth_final, weights.sum(2)
 
     def run_model(self, planes, decoder, sample_coordinates, options, render_one_frame, bypass_network=False):
-        sampled_features = self.projector(planes, sample_coordinates, bypass_network=bypass_network)
+        sampled_features, attention_mask = self.projector(planes, sample_coordinates, bypass_network=bypass_network)
         if render_one_frame:
             full_rendering_res = (options['neural_rendering_resolution'],
                                   options['neural_rendering_resolution'],
@@ -116,7 +117,7 @@ class ImportanceRenderer(torch.nn.Module):
         out = decoder(sampled_features, full_rendering_res, bypass_network=bypass_network)
         if options.get('density_noise', 0) > 0:
             out['sigma'] += torch.randn_like(out['sigma']) * options['density_noise']
-        return out
+        return out, attention_mask
 
     def sort_samples(self, all_depths, all_colors, all_densities):
         _, indices = torch.sort(all_depths, dim=-2)
@@ -282,7 +283,8 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         # print(f'coord: {sample_coordinates[0, :2, :]}')
         # sample_directions = sample_coordinates
 
-        out = self.run_model(planes, decoder, sample_coordinates, rendering_options, render_one_frame=True)
+        out, img_attn_mask = self.run_model(planes, decoder, sample_coordinates, rendering_options,
+                                            render_one_frame=True)
         colors_coarse, features = out['rgb'], out['features']
 
         # render peep video
@@ -305,8 +307,9 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         video_coordinates = torch.stack(video_coordinates, dim=0).reshape(batch_size, -1, 3)
         rendering_options['neural_rendering_resolution'] = video_spatial_res
         # rendering_options['time_steps'] = vide_time_res
-        out = self.run_model(planes, decoder, video_coordinates, rendering_options, render_one_frame=False)
+        out, vid_attn_mask = self.run_model(planes, decoder, video_coordinates, rendering_options,
+                                            render_one_frame=False)
         peep_vid = out['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
             .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
 
-        return colors_coarse, peep_vid, features
+        return colors_coarse, peep_vid, features, img_attn_mask
