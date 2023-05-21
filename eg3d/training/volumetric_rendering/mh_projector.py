@@ -53,11 +53,11 @@ class MHprojector(torch.nn.Module):
                                                                                dropout=0.1,  bias=True,
                                                                                add_bias_kv=False, add_zero_attn=False,
                                                                                kdim=2*motion_feature_dim,
-                                                                               vdim=appearance_feature_dim,
+                                                                               vdim=2*motion_feature_dim,
                                                                                batch_first=True, device=None,
                                                                                dtype=None)
 
-        decoder_layer = torch.nn.TransformerDecoderLayer(d_model=2*motion_feature_dim, dim_feedforward=1204, nhead=4,
+        decoder_layer = torch.nn.TransformerDecoderLayer(d_model=2*motion_feature_dim, dim_feedforward=2048, nhead=8,
                                                          batch_first=True)
         self.encode_movement = torch.nn.TransformerDecoder(decoder_layer, num_layers=6)
 
@@ -82,8 +82,9 @@ class MHprojector(torch.nn.Module):
 
 
 
-        appearance_features = plane_features[:, self.motion_feature_dim:, :, :]\
-            .reshape(batch, self.appearance_feature_dim, -1).permute(0, 2, 1)
+        # appearance_features = plane_features[:, self.motion_feature_dim:, :, :]\
+        #     .reshape(batch, self.appearance_feature_dim, -1).permute(0, 2, 1)
+        appearance_features = mf_and_pe
         attn_output, attn_mask = self.motion_appearance_query_x_attention(query=pix_loc_pe, key=pixel_motion,
                                                                           value=appearance_features, need_weights=True)
 
