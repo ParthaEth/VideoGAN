@@ -49,6 +49,8 @@ class MHprojector(torch.nn.Module):
         self.planes_pos_encoder = PositionalEncodingPermute2D(motion_feature_dim)
         self.pix_loc_pe = PosEncGivenPos(2*motion_feature_dim)
 
+        self.std_pos_encoder = PositionalEncodingPermute3D(motion_feature_dim)
+
         self.motion_appearance_query_x_attention = torch.nn.MultiheadAttention(2*motion_feature_dim, num_heads,
                                                                                dropout=0.1,  bias=True,
                                                                                add_bias_kv=False, add_zero_attn=False,
@@ -76,17 +78,19 @@ class MHprojector(torch.nn.Module):
         motion_features = motion_features.reshape(batch, self.motion_feature_dim, -1)
         mf_and_pe = torch.cat((motion_features, motion_features_pe), dim=1).permute(0, 2, 1)
 
-        pix_loc_pe = self.pix_loc_pe(query_pt)
-        pixel_motion = self.encode_movement(memory=pix_loc_pe, tgt=mf_and_pe)
-
-
-
+        full_vid_pix_loc_pe = self.std_pos_encoder(
+            torch.empty((1, 2*self.motion_feature_dim, 16, 16, 16), dtype=plane_features.dtype,
+                        device=plane_features.device))
+        full_vid_pix_loc_pe = full_vid_pix_loc_pe.reshape(1, 2*self.motion_feature_dim, -1).permute(0, 2, 1)
+        full_vid_pix_loc_pe = full_vid_pix_loc_pe.expand(batch, -1, -1)
+        # import ipdb;ipdb.set_trace()
+        appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
 
         # appearance_features = plane_features[:, self.motion_feature_dim:, :, :]\
         #     .reshape(batch, self.appearance_feature_dim, -1).permute(0, 2, 1)
-        appearance_features = mf_and_pe
-        attn_output, attn_mask = self.motion_appearance_query_x_attention(query=pix_loc_pe, key=pixel_motion,
-                                                                          value=appearance_features, need_weights=True)
+        pix_loc_pe = self.pix_loc_pe(query_pt)
+        attn_output, attn_mask = self.motion_appearance_query_x_attention(query=pix_loc_pe, key=appearance_with_time,
+                                                                          value=appearance_with_time, need_weights=True)
 
         attn_output = self.final_lin(self.layer_norm1(attn_output))
 
