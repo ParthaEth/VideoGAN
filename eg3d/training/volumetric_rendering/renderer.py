@@ -32,7 +32,7 @@ class SampleUsingMHA(torch.nn.Module):
                                                   num_heads=4)
         # self.projector = mh_projector.TransformerProjector(proj_dim=num_plane_features, num_heads=4)
 
-    def forward(self, plane_features, coordinates, bypass_network=False):
+    def forward(self, plane_features, coordinates, recompute_full_vid_features, bypass_network=False):
         batch_size, n_planes, C, H, W = plane_features.shape
         assert n_planes == 1
         _, num_pts, _ = coordinates.shape
@@ -41,7 +41,8 @@ class SampleUsingMHA(torch.nn.Module):
             output_features = coordinates.view(batch_size, 1, num_pts, 3).repeat(1, n_planes, 1, 1)
         else:
             # perform multihead attention on the planer features output : batch_size, n_planes, num_pts, C
-            output_features, attention_mask = self.projector(plane_features.squeeze(), coordinates)
+            output_features, attention_mask = self.projector(plane_features.squeeze(), coordinates,
+                                                             recompute_full_vid_features)
         return output_features[:, None, ...], attention_mask[:, None, ...]
 
 
@@ -104,8 +105,10 @@ class ImportanceRenderer(torch.nn.Module):
 
         return rgb_final, depth_final, weights.sum(2)
 
-    def run_model(self, planes, decoder, sample_coordinates, options, render_one_frame, bypass_network=False):
-        sampled_features, attention_mask = self.projector(planes, sample_coordinates, bypass_network=bypass_network)
+    def run_model(self, planes, decoder, sample_coordinates, options, render_one_frame, recompute_full_vid_features,
+                  bypass_network=False):
+        sampled_features, attention_mask = self.projector(planes, sample_coordinates, recompute_full_vid_features,
+                                                          bypass_network=bypass_network)
         if render_one_frame:
             full_rendering_res = (options['neural_rendering_resolution'],
                                   options['neural_rendering_resolution'],
@@ -285,7 +288,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         # sample_directions = sample_coordinates
 
         out, img_attn_mask = self.run_model(planes, decoder, sample_coordinates, rendering_options,
-                                            render_one_frame=True)
+                                            recompute_full_vid_features=True, render_one_frame=True)
         colors_coarse, features = out['rgb'], out['features']
 
         # render peep video
@@ -309,7 +312,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         rendering_options['neural_rendering_resolution'] = video_spatial_res
         # rendering_options['time_steps'] = vide_time_res
         out, vid_attn_mask = self.run_model(planes, decoder, video_coordinates, rendering_options,
-                                            render_one_frame=False)
+                                            recompute_full_vid_features=True, render_one_frame=False)
         peep_vid = out['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
             .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
 
