@@ -76,7 +76,7 @@ class MHprojector(torch.nn.Module):
         self.layer_norm1 = torch.nn.LayerNorm(motion_feature_dim)
         self.final_lin = torch.nn.Linear(motion_feature_dim, self.motion_feature_dim + self.appearance_feature_dim)
         self.appearance_with_time = None
-        self.full_vid_motion_features = None
+        self.motion_latent = None
 
     def get_whole_video_pe(self, x_res, y_res, t_res, dtype, device):
         cod_x = torch.linspace(-1, 1, x_res, dtype=dtype, device=device)
@@ -98,21 +98,26 @@ class MHprojector(torch.nn.Module):
         motion_features_pe = self.planes_pos_encoder(motion_features).reshape(batch, self.motion_feature_dim, -1)
         motion_features = motion_features.reshape(batch, self.motion_feature_dim, -1)
         mf_and_pe = torch.cat((motion_features, motion_features_pe), dim=1).permute(0, 2, 1)
+        pix_loc_pe = self.pix_loc_pe(query_pt)
 
-        x_res, y_res, t_res = 16, 16, 16
+        # x_res, y_res, t_res = 16, 16, 16
         dtype, device = plane_features.dtype, plane_features.device
         if recompute_full_vid_features:
-            self.full_vid_motion_features = torch.randn((batch, x_res * y_res * t_res, self.motion_feature_dim),
-                                                         dtype=dtype, device=device)
-        full_vid_pix_loc_pe = self.get_whole_video_pe(x_res, y_res, t_res, dtype, device)
-        full_vid_pix_loc_pe = full_vid_pix_loc_pe.expand(batch, -1, -1)
+            self.motion_latent = torch.randn((batch, 1, self.motion_feature_dim), dtype=dtype, device=device)
+            # self.motion_latent = self.motion_latent.expand(-1, x_res * y_res * t_res, -1)
+            self.motion_latent = self.motion_latent.expand(-1, pix_loc_pe.shape[1], -1)
 
-        full_vid_pix_loc_pe = torch.cat((full_vid_pix_loc_pe, self.full_vid_motion_features), dim=2)
-        self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
+        # full_vid_pix_loc_pe = self.get_whole_video_pe(x_res, y_res, t_res, dtype, device)
+        # full_vid_pix_loc_pe = full_vid_pix_loc_pe.expand(batch, -1, -1)
+        #
+        # full_vid_pix_loc_pe = torch.cat((full_vid_pix_loc_pe, self.full_vid_motion_features), dim=2)
+        # self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
+        pix_loc_pe_and_motion_latent = torch.cat((self.motion_latent, pix_loc_pe), dim=-1)
+        self.appearance_with_time = self.encode_movement(memory=pix_loc_pe_and_motion_latent, tgt=mf_and_pe)
+        # import ipdb; ipdb.set_trace()
 
         # appearance_features = plane_features[:, self.motion_feature_dim:, :, :]\
         #     .reshape(batch, self.appearance_feature_dim, -1).permute(0, 2, 1)
-        pix_loc_pe = self.pix_loc_pe(query_pt)
         attn_output, attn_mask = self.motion_appearance_query_x_attention(
             query=pix_loc_pe, key=self.appearance_with_time, value=self.appearance_with_time, need_weights=True)
 

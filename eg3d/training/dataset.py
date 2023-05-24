@@ -334,11 +334,11 @@ class VideoFolderDataset(Dataset):
             if peep_location is None:
                 peep_vid = 'None'
             else:
-                num_frame_step_size = vid_vol.shape[-1]//self.num_frames
+                # num_frame_step_size = vid_vol.shape[-1]//self.num_frames
                 peep_vid = vid_vol[:,
                                    peep_location[0]:peep_location[0]+self.peep_window_crop_size,
                                    peep_location[1]:peep_location[1]+self.peep_window_crop_size,
-                                   ::num_frame_step_size]
+                                   :self.num_frames]
 
         return image, peep_vid, np.array(lbl_cond)
 
