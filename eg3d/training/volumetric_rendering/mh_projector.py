@@ -5,21 +5,33 @@ from transformers import LEDConfig, LEDModel
 
 
 class PosEncGivenPos(torch.nn.Module):
-    def __init__(self, proj_dim):
+    def __init__(self, proj_dim, enc_type: str):
         super().__init__()
-        std_pos_encoder = PositionalEncodingPermute3D(proj_dim)
-        pos_enc = std_pos_encoder(torch.zeros(1, proj_dim, 32, 32, 32))
-        self.register_buffer('pos_enc', pos_enc)
+        if enc_type.lower() == 'fourier':
+            std_pos_encoder = PositionalEncodingPermute3D(proj_dim)
+            pos_enc = std_pos_encoder(torch.zeros(1, proj_dim, 32, 32, 32))
+            self.register_buffer('pos_enc', pos_enc)
+        elif enc_type.lower() == 'learned':
+            self.pos_enc = torch.nn.Parameter(torch.randn((1, proj_dim, 32, 32, 32)))
+        else:
+            raise NotImplementedError(f'Encoding type {enc_type} not implemented')
 
     def forward(self, coordinates):
+        """coordinates: batch, num_pts, 3 of the format row, col, depth"""
         batch, n_pts, _ = coordinates.shape
-        h_out = w_out = 2
+        h_out = w_out = 1
         d_out = -1
         coordinates = coordinates.reshape(batch, d_out, h_out, w_out, 3)
+        # since the grid sampler expects x,y,z format and row, col, depth maps to z, y, x we must shuffle
+        coordinates = coordinates.flip(dims=(-1,))
         pe = torch.nn.functional.grid_sample(self.pos_enc.expand(batch, -1, -1, -1, -1), coordinates,
-                                             align_corners=False, mode='bilinear')
+                                             align_corners=True,
+                                             mode='bilinear',
+                                             # mode='nearest',
+                                             padding_mode='reflection')
         # now pe \in R^(batch, color_channels, d_out, h_out, w_out)
         return pe.reshape(batch, -1, n_pts).permute(0, 2, 1)
+
 
 class LayerMhAttentionAndFeedForward(torch.nn.Module):
     def __init__(self, proj_dim, num_heads):
@@ -47,11 +59,9 @@ class MHprojector(torch.nn.Module):
         self.appearance_feature_dim = appearance_feature_dim
 
         self.planes_pos_encoder = PositionalEncodingPermute2D(motion_feature_dim)
-        self.pix_loc_pe = PosEncGivenPos(2*motion_feature_dim)
+        self.pix_loc_pe = PosEncGivenPos(motion_feature_dim, enc_type='fourier')
 
-        self.std_pos_encoder = PositionalEncodingPermute3D(motion_feature_dim)
-
-        self.motion_appearance_query_x_attention = torch.nn.MultiheadAttention(2*motion_feature_dim, num_heads,
+        self.motion_appearance_query_x_attention = torch.nn.MultiheadAttention(motion_feature_dim, num_heads,
                                                                                dropout=0.1,  bias=True,
                                                                                add_bias_kv=False, add_zero_attn=False,
                                                                                kdim=2*motion_feature_dim,
@@ -63,9 +73,19 @@ class MHprojector(torch.nn.Module):
                                                          batch_first=True)
         self.encode_movement = torch.nn.TransformerDecoder(decoder_layer, num_layers=6)
 
-        self.layer_norm1 = torch.nn.LayerNorm(2*motion_feature_dim)
-        self.final_lin = torch.nn.Linear(2*motion_feature_dim, self.motion_feature_dim + self.appearance_feature_dim)
+        self.layer_norm1 = torch.nn.LayerNorm(motion_feature_dim)
+        self.final_lin = torch.nn.Linear(motion_feature_dim, self.motion_feature_dim + self.appearance_feature_dim)
         self.appearance_with_time = None
+        self.full_vid_motion_features = None
+
+    def get_whole_video_pe(self, x_res, y_res, t_res, dtype, device):
+        cod_x = torch.linspace(-1, 1, x_res, dtype=dtype, device=device)
+        cod_y = torch.linspace(-1, 1, y_res, dtype=dtype, device=device)
+        cod_z = torch.linspace(-1, 1, t_res, dtype=dtype, device=device)
+        grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
+        full_vid_coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
+        full_vid_pix_pe = self.pix_loc_pe(full_vid_coordinates.reshape(1, -1, 3))
+        return full_vid_pix_pe
 
     def forward(self, plane_features, query_pt, recompute_full_vid_features):
         """
@@ -74,26 +94,27 @@ class MHprojector(torch.nn.Module):
         """
         batch, ch, h, w = plane_features.shape
         assert self.motion_feature_dim + self.appearance_feature_dim == ch
-        if recompute_full_vid_features:
-            motion_features = plane_features[:, :self.motion_feature_dim, :, :]
-            motion_features_pe = self.planes_pos_encoder(motion_features).reshape(batch, self.motion_feature_dim, -1)
-            motion_features = motion_features.reshape(batch, self.motion_feature_dim, -1)
-            mf_and_pe = torch.cat((motion_features, motion_features_pe), dim=1).permute(0, 2, 1)
+        motion_features = plane_features[:, :self.motion_feature_dim, :, :]
+        motion_features_pe = self.planes_pos_encoder(motion_features).reshape(batch, self.motion_feature_dim, -1)
+        motion_features = motion_features.reshape(batch, self.motion_feature_dim, -1)
+        mf_and_pe = torch.cat((motion_features, motion_features_pe), dim=1).permute(0, 2, 1)
 
-            full_vid_motion_features = torch.randn((1, self.motion_feature_dim, 32, 32, 8), dtype=plane_features.dtype,
-                                                    device=plane_features.device)
-            full_vid_pix_loc_pe = self.std_pos_encoder(full_vid_motion_features)
-            full_vid_pix_loc_pe = torch.cat((full_vid_pix_loc_pe, full_vid_motion_features), dim=1)
-            full_vid_pix_loc_pe = full_vid_pix_loc_pe.reshape(1, 2*self.motion_feature_dim, -1).permute(0, 2, 1)
-            full_vid_pix_loc_pe = full_vid_pix_loc_pe.expand(batch, -1, -1)
-            # import ipdb;ipdb.set_trace()
-            self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
+        x_res, y_res, t_res = 16, 16, 16
+        dtype, device = plane_features.dtype, plane_features.device
+        if recompute_full_vid_features:
+            self.full_vid_motion_features = torch.randn((batch, x_res * y_res * t_res, self.motion_feature_dim),
+                                                         dtype=dtype, device=device)
+        full_vid_pix_loc_pe = self.get_whole_video_pe(x_res, y_res, t_res, dtype, device)
+        full_vid_pix_loc_pe = full_vid_pix_loc_pe.expand(batch, -1, -1)
+
+        full_vid_pix_loc_pe = torch.cat((full_vid_pix_loc_pe, self.full_vid_motion_features), dim=2)
+        self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
 
         # appearance_features = plane_features[:, self.motion_feature_dim:, :, :]\
         #     .reshape(batch, self.appearance_feature_dim, -1).permute(0, 2, 1)
         pix_loc_pe = self.pix_loc_pe(query_pt)
-        attn_output, attn_mask = self.motion_appearance_query_x_attention(query=pix_loc_pe, key=self.appearance_with_time,
-                                                                          value=self.appearance_with_time, need_weights=True)
+        attn_output, attn_mask = self.motion_appearance_query_x_attention(
+            query=pix_loc_pe, key=self.appearance_with_time, value=self.appearance_with_time, need_weights=True)
 
         attn_output = self.final_lin(self.layer_norm1(attn_output))
 
