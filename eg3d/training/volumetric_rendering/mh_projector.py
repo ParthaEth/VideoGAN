@@ -113,7 +113,7 @@ class MHprojector(torch.nn.Module):
         # full_vid_pix_loc_pe = torch.cat((full_vid_pix_loc_pe, self.full_vid_motion_features), dim=2)
         # self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
         # pix_loc_pe_and_motion_latent = torch.cat((self.motion_latent, pix_loc_pe), dim=-1)
-        pix_loc_pe_and_motion_latent = torch.cat((self.pix_loc_pe, pix_loc_pe), dim=-1)
+        pix_loc_pe_and_motion_latent = torch.cat((pix_loc_pe, pix_loc_pe), dim=-1)
         self.appearance_with_time = self.encode_movement(memory=pix_loc_pe_and_motion_latent, tgt=mf_and_pe)
         # import ipdb; ipdb.set_trace()
 
