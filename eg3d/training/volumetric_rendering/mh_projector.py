@@ -112,14 +112,15 @@ class MHprojector(torch.nn.Module):
         #
         # full_vid_pix_loc_pe = torch.cat((full_vid_pix_loc_pe, self.full_vid_motion_features), dim=2)
         # self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
-        pix_loc_pe_and_motion_latent = torch.cat((self.motion_latent, pix_loc_pe), dim=-1)
+        # pix_loc_pe_and_motion_latent = torch.cat((self.motion_latent, pix_loc_pe), dim=-1)
+        pix_loc_pe_and_motion_latent = torch.cat((self.pix_loc_pe, pix_loc_pe), dim=-1)
         self.appearance_with_time = self.encode_movement(memory=pix_loc_pe_and_motion_latent, tgt=mf_and_pe)
         # import ipdb; ipdb.set_trace()
 
         # appearance_features = plane_features[:, self.motion_feature_dim:, :, :]\
         #     .reshape(batch, self.appearance_feature_dim, -1).permute(0, 2, 1)
         attn_output, attn_mask = self.motion_appearance_query_x_attention(
-            query=pix_loc_pe, key=self.appearance_with_time, value=self.appearance_with_time, need_weights=True)
+            query=pix_loc_pe, key=self.appearance_with_time, value=mf_and_pe, need_weights=True)
 
         attn_output = self.final_lin(self.layer_norm1(attn_output))
 
