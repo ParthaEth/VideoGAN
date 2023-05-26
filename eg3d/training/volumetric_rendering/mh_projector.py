@@ -7,9 +7,11 @@ from transformers import LEDConfig, LEDModel
 class PosEncGivenPos(torch.nn.Module):
     def __init__(self, proj_dim, enc_type: str):
         super().__init__()
+
+        # import ipdb; ipdb.set_trace()
         if enc_type.lower() == 'fourier':
             std_pos_encoder = PositionalEncodingPermute3D(proj_dim)
-            pos_enc = std_pos_encoder(torch.zeros(1, proj_dim, 32, 32, 32))
+            pos_enc = std_pos_encoder(torch.randn(1, proj_dim, 32, 32, 32))
             self.register_buffer('pos_enc', pos_enc)
         elif enc_type.lower() == 'learned':
             self.pos_enc = torch.nn.Parameter(torch.randn((1, proj_dim, 32, 32, 32)))
@@ -100,21 +102,21 @@ class MHprojector(torch.nn.Module):
         mf_and_pe = torch.cat((motion_features, motion_features_pe), dim=1).permute(0, 2, 1)
         pix_loc_pe = self.pix_loc_pe(query_pt)
 
-        # x_res, y_res, t_res = 16, 16, 16
+        x_res, y_res, t_res = 16, 16, 16
         dtype, device = plane_features.dtype, plane_features.device
         if recompute_full_vid_features:
             self.motion_latent = torch.randn((batch, 1, self.motion_feature_dim), dtype=dtype, device=device)
             # self.motion_latent = self.motion_latent.expand(-1, x_res * y_res * t_res, -1)
             self.motion_latent = self.motion_latent.expand(-1, pix_loc_pe.shape[1], -1)
 
-        # full_vid_pix_loc_pe = self.get_whole_video_pe(x_res, y_res, t_res, dtype, device)
-        # full_vid_pix_loc_pe = full_vid_pix_loc_pe.expand(batch, -1, -1)
+        full_vid_pix_loc_pe = self.get_whole_video_pe(x_res, y_res, t_res, dtype, device)
+        full_vid_pix_loc_pe = full_vid_pix_loc_pe.expand(batch, -1, -1).repeat(1, 1, 2)
         #
         # full_vid_pix_loc_pe = torch.cat((full_vid_pix_loc_pe, self.full_vid_motion_features), dim=2)
         # self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
         # pix_loc_pe_and_motion_latent = torch.cat((self.motion_latent, pix_loc_pe), dim=-1)
         pix_loc_pe_and_motion_latent = torch.cat((pix_loc_pe, pix_loc_pe), dim=-1)
-        self.appearance_with_time = self.encode_movement(memory=pix_loc_pe_and_motion_latent, tgt=mf_and_pe)
+        self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
         # import ipdb; ipdb.set_trace()
 
         # appearance_features = plane_features[:, self.motion_feature_dim:, :, :]\
@@ -149,7 +151,7 @@ class TransformerProjector(torch.nn.Module):
         self.model = LEDModel(configuration)
 
         self.planes_pos_encoder = PositionalEncodingPermute2D(proj_dim)
-        self.q_map = PosEncGivenPos(proj_dim)
+        self.q_map = PosEncGivenPos(proj_dim, enc_type='fourier')
         self.self_att_neighbourhood = 32
         mask_for_img_pts = self.make_mask(64, 64, 1, self.self_att_neighbourhood)
         mask_for_vid_pts = self.make_mask(32, 32, 16, self.self_att_neighbourhood)
@@ -176,7 +178,7 @@ class TransformerProjector(torch.nn.Module):
 
         return mask_for_img_pts.squeeze()
 
-    def forward(self,  plane_features, query_pt):
+    def forward(self,  plane_features, query_pt, recompute_full_vid_features):
         batch, ch, h, w = plane_features.shape
         assert self.proj_dim == ch
         plane_features = plane_features.permute(0, 2, 3, 1)  # batch, h, w, ch
@@ -201,4 +203,4 @@ class TransformerProjector(torch.nn.Module):
                                      return_dict=True)['last_hidden_state']
         # import ipdb; ipdb.set_trace()
         # return torch.cat(transformed_out, dim=split_axis)
-        return transformed_out
+        return transformed_out, transformed_out

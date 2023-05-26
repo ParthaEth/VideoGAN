@@ -103,7 +103,6 @@ def launch_training(c, desc, outdir, dry_run):
         print(f'WARNING: Saving code dir as zip took {end_time - start_time} seconds. it should be less than a second,'
               f'Make sure you do not have files other than python scripts in here')
 
-
     # Launch processes.
     print('Launching processes...')
     torch.multiprocessing.set_start_method('spawn')

@@ -27,10 +27,10 @@ from training.volumetric_rendering import math_utils, mh_projector
 class SampleUsingMHA(torch.nn.Module):
     def __init__(self, num_plane_features):
         super().__init__()
-        self.projector = mh_projector.MHprojector(motion_feature_dim=num_plane_features,
-                                                  appearance_feature_dim=num_plane_features-num_plane_features,
-                                                  num_heads=4)
-        # self.projector = mh_projector.TransformerProjector(proj_dim=num_plane_features, num_heads=4)
+        # self.projector = mh_projector.MHprojector(motion_feature_dim=num_plane_features,
+        #                                           appearance_feature_dim=num_plane_features-num_plane_features,
+        #                                           num_heads=4)
+        self.projector = mh_projector.TransformerProjector(proj_dim=num_plane_features, num_heads=1)
 
     def forward(self, plane_features, coordinates, recompute_full_vid_features, bypass_network=False):
         batch_size, n_planes, C, H, W = plane_features.shape
