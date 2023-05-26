@@ -20,6 +20,7 @@ import re
 import json
 import tempfile
 import torch
+import shutil
 
 import dnnlib
 from training import training_loop
@@ -92,6 +93,10 @@ def launch_training(c, desc, outdir, dry_run):
     os.makedirs(c.run_dir)
     with open(os.path.join(c.run_dir, 'training_options.json'), 'wt') as f:
         json.dump(c, f, indent=2)
+
+    print('Dump running code ...')
+    shutil.make_archive(os.path.join(c.run_dir, 'running code.zip'), 'zip', '../../VideoGAN')
+
 
     # Launch processes.
     print('Launching processes...')
