@@ -67,7 +67,7 @@ class MHprojector(torch.nn.Module):
                                                                                dropout=0.1,  bias=True,
                                                                                add_bias_kv=False, add_zero_attn=False,
                                                                                kdim=2*motion_feature_dim,
-                                                                               vdim=2*motion_feature_dim,
+                                                                               vdim=motion_feature_dim,
                                                                                batch_first=True, device=None,
                                                                                dtype=None)
 
@@ -115,14 +115,14 @@ class MHprojector(torch.nn.Module):
         # full_vid_pix_loc_pe = torch.cat((full_vid_pix_loc_pe, self.full_vid_motion_features), dim=2)
         # self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
         # pix_loc_pe_and_motion_latent = torch.cat((self.motion_latent, pix_loc_pe), dim=-1)
-        pix_loc_pe_and_motion_latent = torch.cat((pix_loc_pe, pix_loc_pe), dim=-1)
-        self.appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
+        # pix_loc_pe_and_motion_latent = torch.cat((pix_loc_pe, pix_loc_pe), dim=-1)
+        appearance_with_time = self.encode_movement(memory=full_vid_pix_loc_pe, tgt=mf_and_pe)
         # import ipdb; ipdb.set_trace()
 
-        # appearance_features = plane_features[:, self.motion_feature_dim:, :, :]\
-        #     .reshape(batch, self.appearance_feature_dim, -1).permute(0, 2, 1)
+        appearance_features = plane_features[:, self.motion_feature_dim:, :, :]\
+            .reshape(batch, self.appearance_feature_dim, -1).permute(0, 2, 1)
         attn_output, attn_mask = self.motion_appearance_query_x_attention(
-            query=pix_loc_pe, key=self.appearance_with_time, value=mf_and_pe, need_weights=True)
+            query=pix_loc_pe, key=appearance_with_time, value=appearance_features, need_weights=True)
 
         attn_output = self.final_lin(self.layer_norm1(attn_output))
 
@@ -152,7 +152,7 @@ class TransformerProjector(torch.nn.Module):
 
         self.planes_pos_encoder = PositionalEncodingPermute2D(proj_dim)
         self.q_map = PosEncGivenPos(proj_dim, enc_type='fourier')
-        self.self_att_neighbourhood = 32
+        self.self_att_neighbourhood = 64
         mask_for_img_pts = self.make_mask(64, 64, 1, self.self_att_neighbourhood)
         mask_for_vid_pts = self.make_mask(32, 32, 16, self.self_att_neighbourhood)
         self.target_masks = {64*64: mask_for_img_pts, 32*32*16: mask_for_vid_pts}
@@ -203,4 +203,45 @@ class TransformerProjector(torch.nn.Module):
                                      return_dict=True)['last_hidden_state']
         # import ipdb; ipdb.set_trace()
         # return torch.cat(transformed_out, dim=split_axis)
-        return transformed_out, transformed_out
+        return transformed_out, torch.zeros((batch, h*w, num_pts), device=plane_features.device,
+                                            dtype=plane_features.dtype)
+
+class TinyMHprojector(torch.nn.Module):
+    def __init__(self, proj_dim, num_heads):
+        super().__init__()
+        self.proj_dim = proj_dim
+        self.planes_pos_encoder = PositionalEncodingPermute2D(proj_dim)
+
+        self.q_map = PosEncGivenPos(proj_dim, enc_type='learned')
+
+        self.attn_mod1 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
+        # self.attn_mod2 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
+        # self.attn_mod3 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
+        # self.attn_mod4 = LayerMhAttentionAndFeedForward(proj_dim, num_heads)
+
+        self.final_lin = torch.nn.Linear(proj_dim, proj_dim)
+
+    def forward(self, plane_features, query_pt, recompute_full_vid_features):
+        """
+            :param plane_features: (batch, ch, h, w).
+            :param query_pt: (batch, n_points, 3).
+        """
+        batch, ch, h, w = plane_features.shape
+        assert self.proj_dim == ch
+        keys = self.planes_pos_encoder(plane_features).permute(0, 2, 3, 1).reshape(batch, h * w, self.proj_dim)
+        values = plane_features.permute(0, 2, 3, 1).reshape(batch, h * w, self.proj_dim)
+
+        # import ipdb; ipdb.set_trace()
+        batch, num_pts, pt_dim = query_pt.shape
+        assert pt_dim == 3
+
+        query_pt = self.q_map(query_pt)
+        attn_output, attn_mask = self.attn_mod1(query_pt, keys, values)
+        # attn_output_interm = attn_output + query_pt
+        # attn_output, _ = self.attn_mod2(attn_output_interm, attn_output_interm, attn_output_interm)
+        # attn_output_interm = attn_output_interm + attn_output
+        # attn_output, attn_mask = self.attn_mod3(attn_output_interm, keys, values)
+
+        attn_output = self.final_lin(attn_output)
+
+        return attn_output.reshape(batch, num_pts, -1), attn_mask # dim: batch, num_pts, features

@@ -21,7 +21,7 @@ from torch_utils.ops import upfirdn2d
 
 
 class VidFromImg:
-    def __init__(self, img_path, resolution, time_steps, max_x_zoom=4, num_resolutions=20):
+    def __init__(self, img_path, resolution, time_steps, max_x_zoom=4, num_resolutions=5):
         image = PIL.Image.open(img_path).convert('RGB')
         image = image.resize((resolution, resolution))
         self.resolution = resolution
@@ -95,7 +95,7 @@ device = 'cuda'
 resample_filter = upfirdn2d.setup_filter([1,3,3,1], device=device)
 plane_h = plane_w = 32
 rendering_res = 64
-time_steps = 16
+time_steps = 4
 target_resolution = 256
 plane_c = 32
 num_planes = 1
@@ -105,7 +105,7 @@ load_saved = False
 out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
 os.makedirs(out_dir, exist_ok=True)
 
-planes = torch.clip((1/10)*torch.randn(b_size*toral_batches, num_planes, plane_c, plane_h, plane_w,
+planes = torch.clip((1/100)*torch.randn(b_size*toral_batches, num_planes, plane_c, plane_h, plane_w,
                                 dtype=torch.float32), min=-3, max=3).to(device)
 ws = torch.clip(torch.randn(b_size*toral_batches, 10, 512, dtype=torch.float32), min=-3, max=3).to(device)
 # planes = torch.ones(b_size, num_planes, plane_c, plane_h, plane_w, dtype=torch.float32).to(device) * 0.168 * 3
@@ -150,7 +150,7 @@ else:
     sup_res_params = []
 
 mdl_params = rend_params + dec_params + sup_res_params
-opt = torch.optim.Adam([{'params': planes, 'lr': 0.1},
+opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3},
                         {'params': ws, 'lr': 1e-3},
                         {'params': mdl_params}], lr=1e-3, betas=(0.0, 0.9))
 # import ipdb;ipdb.set_trace()
