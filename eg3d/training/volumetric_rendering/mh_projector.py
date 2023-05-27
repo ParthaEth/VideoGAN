@@ -206,11 +206,37 @@ class TransformerProjector(torch.nn.Module):
         return transformed_out, torch.zeros((batch, h*w, num_pts), device=plane_features.device,
                                             dtype=plane_features.dtype)
 
+
+class PositionaGenerator(torch.nn.Module):
+    def __init__(self, proj_dim):
+        super().__init__()
+        self.std_pos_emb = PositionalEncodingPermute2D(proj_dim)
+        self.make_generative_pos_emb = torch.nn.Sequential(torch.nn.Linear(2*proj_dim, 2*proj_dim),
+                                                           torch.nn.ReLU(2*proj_dim),
+                                                           torch.nn.Linear(2*proj_dim, 2*proj_dim),
+                                                           torch.nn.ReLU(2 * proj_dim),
+                                                           torch.nn.Linear(2*proj_dim, proj_dim))
+
+    def forward(self, z, features):
+        '''
+        Z: vluees will be used
+        features: Only positional embedding of the features wll be used
+        '''
+        batch, ch, h, w = features.shape
+        fpe = self.std_pos_emb(features).permute(0, 2, 3, 1).reshape(batch, h * w, -1)
+        # fpe is of shape batch, h*w, proj_dim
+        z_proj_dim = z[:, :fpe.shape[-1]][:, None, :].expand(-1, h * w, -1)
+
+        fpe_and_noise = torch.cat((fpe, z_proj_dim), dim=-1)
+        generative_pos_emb = self.make_generative_pos_emb(fpe_and_noise)
+        return generative_pos_emb
+
+
 class TinyMHprojector(torch.nn.Module):
     def __init__(self, proj_dim, num_heads):
         super().__init__()
         self.proj_dim = proj_dim
-        self.planes_pos_encoder = PositionalEncodingPermute2D(proj_dim)
+        self.planes_pos_encoder = PositionaGenerator(proj_dim)
 
         self.q_map = PosEncGivenPos(proj_dim, enc_type='learned')
 
@@ -221,14 +247,16 @@ class TinyMHprojector(torch.nn.Module):
 
         self.final_lin = torch.nn.Linear(proj_dim, proj_dim)
 
-    def forward(self, plane_features, query_pt, recompute_full_vid_features):
+    def forward(self, z, plane_features, query_pt, recompute_full_vid_features):
         """
             :param plane_features: (batch, ch, h, w).
             :param query_pt: (batch, n_points, 3).
+            :param z: (batch, latent_dim); latent_dim >= proj_dim
         """
+        assert self.proj_dim <= z.shape[-1]
         batch, ch, h, w = plane_features.shape
         assert self.proj_dim == ch
-        keys = self.planes_pos_encoder(plane_features).permute(0, 2, 3, 1).reshape(batch, h * w, self.proj_dim)
+        keys = self.planes_pos_encoder(z, plane_features)
         values = plane_features.permute(0, 2, 3, 1).reshape(batch, h * w, self.proj_dim)
 
         # import ipdb; ipdb.set_trace()

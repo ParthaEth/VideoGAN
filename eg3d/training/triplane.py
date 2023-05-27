@@ -81,7 +81,7 @@ class TriPlaneGenerator(torch.nn.Module):
         return self.backbone.mapping(z, cond * self.rendering_kwargs.get('c_scale', 0), truncation_psi=truncation_psi,
                                      truncation_cutoff=truncation_cutoff, update_emas=update_emas)
 
-    def synthesis(self, ws, c, neural_rendering_resolution=None, update_emas=False, cache_backbone=False,
+    def synthesis(self, z, ws, c, neural_rendering_resolution=None, update_emas=False, cache_backbone=False,
                   use_cached_backbone=False, **synthesis_kwargs):
         # cam2world_matrix = c[:, :16].view(-1, 4, 4)
         # intrinsics = c[:, 16:25].view(-1, 3, 3)
@@ -115,7 +115,7 @@ class TriPlaneGenerator(torch.nn.Module):
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
         #     self.renderer(planes, self.decoder, ray_origins, ray_directions, self.rendering_kwargs) # channels last
-        rgb_image, peep_video, features, img_attn_mask = self.renderer(planes, self.decoder, c, None,
+        rgb_image, peep_video, features, img_attn_mask = self.renderer(z, planes, self.decoder, c, None,
                                                                        self.rendering_kwargs)  # channels last
 
         # Reshape into 'raw' image
@@ -176,9 +176,9 @@ class TriPlaneGenerator(torch.nn.Module):
         # Render a batch of generated images.
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
                           update_emas=update_emas)
-        return self.synthesis(ws, c, update_emas=update_emas, neural_rendering_resolution=neural_rendering_resolution,
-                              cache_backbone=cache_backbone, use_cached_backbone=use_cached_backbone,
-                              **synthesis_kwargs)
+        return self.synthesis(z, ws, c, update_emas=update_emas,
+                              neural_rendering_resolution=neural_rendering_resolution, cache_backbone=cache_backbone,
+                              use_cached_backbone=use_cached_backbone, **synthesis_kwargs)
 
 
 from training.networks_stylegan2 import Conv2dLayer, SynthesisBlock
