@@ -211,9 +211,9 @@ class PositionaGenerator(torch.nn.Module):
     def __init__(self, proj_dim):
         super().__init__()
         self.std_pos_emb = PositionalEncodingPermute2D(proj_dim)
-        self.make_generative_pos_emb = torch.nn.Sequential(torch.nn.Linear(2*proj_dim, 2*proj_dim),
-                                                           torch.nn.ReLU(2*proj_dim),
-                                                           torch.nn.Linear(2*proj_dim, 2*proj_dim),
+        self.make_generative_pos_emb = torch.nn.Sequential(torch.nn.Linear(2*proj_dim, 4*proj_dim),
+                                                           torch.nn.ReLU(4*proj_dim),
+                                                           torch.nn.Linear(4*proj_dim, 2*proj_dim),
                                                            torch.nn.ReLU(2 * proj_dim),
                                                            torch.nn.Linear(2*proj_dim, proj_dim))
 
@@ -229,7 +229,7 @@ class PositionaGenerator(torch.nn.Module):
 
         fpe_and_noise = torch.cat((fpe, z_proj_dim), dim=-1)
         generative_pos_emb = self.make_generative_pos_emb(fpe_and_noise)
-        return generative_pos_emb
+        return generative_pos_emb + fpe
 
 
 class TinyMHprojector(torch.nn.Module):

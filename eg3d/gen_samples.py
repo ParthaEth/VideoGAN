@@ -198,12 +198,12 @@ def generate_images(
 
             ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
             # generated_objects = G.synthesis(ws, conditioning_params, noise_mode='random')
-            generated_objects = G.synthesis(ws, conditioning_params, noise_mode='const')
+            generated_objects = G.synthesis(z, ws, conditioning_params, noise_mode='const')
             img_batch = generated_objects[img_type]
             attn_masks = generated_objects['img_attention_mask']
             batch, feture_size, feature_size, h, w = attn_masks.shape
-            attn_masks_middle_pix = attn_masks[:, :, :, h//2, w//2][:, None, ...]
-            # attn_masks_middle_pix = attn_masks.mean(dim=(3, 4))[:, None, ...]
+            # attn_masks_middle_pix = attn_masks[:, :, :, h//2, w//2][:, None, ...]
+            attn_masks_middle_pix = attn_masks.mean(dim=(3, 4))[:, None, ...]
             attn_masks_middle_pix = attn_masks_middle_pix - attn_masks_middle_pix.min()
             attn_masks_middle_pix /= attn_masks_middle_pix.max()
 
