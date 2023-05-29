@@ -20,6 +20,8 @@ import re
 import json
 import tempfile
 import torch
+import shutil
+import time
 
 import dnnlib
 from training import training_loop
@@ -93,6 +95,14 @@ def launch_training(c, desc, outdir, dry_run):
     with open(os.path.join(c.run_dir, 'training_options.json'), 'wt') as f:
         json.dump(c, f, indent=2)
 
+    print('Dump running code ...')
+    start_time = time.time()
+    shutil.make_archive(os.path.join(c.run_dir, 'running code.zip'), 'zip', '../../VideoGAN')
+    end_time = time.time()
+    if end_time - start_time > 1.0:
+        print(f'WARNING: Saving code dir as zip took {end_time - start_time} seconds. it should be less than a second,'
+              f'Make sure you do not have files other than python scripts in here')
+        
     # Launch processes.
     print('Launching processes...')
     torch.multiprocessing.set_start_method('spawn')
