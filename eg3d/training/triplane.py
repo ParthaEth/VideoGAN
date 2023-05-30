@@ -13,7 +13,7 @@ import torchvision.transforms
 
 from torch_utils import persistence
 from training.networks_stylegan2 import Generator as StyleGAN2Backbone
-from training.volumetric_rendering.renderer import ImportanceRenderer, AxisAligndProjectionRenderer
+from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
 # from training.volumetric_rendering.ray_sampler import RaySampler
 import dnnlib
 
@@ -39,19 +39,20 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_resolution=img_resolution
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
-        self.plane_features = 32
-        self.num_planes = 6
+        self.appearance_features = 32  # 32 appearance features 6 motion features
+        self.motion_features = 6
+        self.num_planes = 1
         self.renderer = AxisAligndProjectionRenderer(return_video, self.num_planes)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
         self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
-                                          img_channels=self.plane_features * self.num_planes,
+                                          img_channels=self.appearance_features + self.motion_features,
                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
-        self.decoder = OSGDecoder(self.plane_features,
+        self.decoder = OSGDecoder(self.appearance_features,
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
                                    'decoder_output_dim': 32})
 
@@ -109,8 +110,8 @@ class TriPlaneGenerator(torch.nn.Module):
 
         # Reshape output into three 32-channel planes
         b_size = len(planes)
-        planes = planes.view(b_size, self.num_planes, self.plane_features, planes.shape[-2], planes.shape[-1])
-        planes[1, 0].std()
+        planes = planes.view(b_size, self.num_planes, self.appearance_features + self.motion_features,
+                             planes.shape[-2], planes.shape[-1])
 
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
@@ -157,14 +158,14 @@ class TriPlaneGenerator(torch.nn.Module):
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
                           update_emas=update_emas)
         planes = self.backbone.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
-        planes = planes.view(len(planes), self.num_planes, self.plane_features, planes.shape[-2], planes.shape[-1])
+        planes = planes.view(len(planes), self.num_planes, self.appearance_features, planes.shape[-2], planes.shape[-1])
         return self.renderer.run_model(planes, self.decoder, coordinates, directions, self.rendering_kwargs)
 
     def sample_mixed(self, coordinates, directions, ws, truncation_psi=1, truncation_cutoff=None, update_emas=False,
                      **synthesis_kwargs):
         # Same as sample, but expects latent vectors 'ws' instead of Gaussian noise 'z'
         planes = self.backbone.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
-        planes = planes.view(len(planes), self.num_planes, self.plane_features, planes.shape[-2], planes.shape[-1])
+        planes = planes.view(len(planes), self.num_planes, self.appearance_features, planes.shape[-2], planes.shape[-1])
         return self.renderer.run_model(planes, self.decoder, coordinates, directions, self.rendering_kwargs)
 
     def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, neural_rendering_resolution=None,
@@ -210,7 +211,7 @@ class OSGDecoder(torch.nn.Module):
         # self.rend_res = options['rend_res']
 
         self.synth_net = torch.nn.ModuleList([
-            SynthesisBlock(in_channels=n_features * 3, out_channels=8 * n_features, w_dim=4, resolution=None,
+            SynthesisBlock(in_channels=n_features, out_channels=8 * n_features, w_dim=4, resolution=None,
                            img_channels=3, use_noise=False, is_last=False, up=1,
                            activation='lrelu', kernel_size=3, architecture='orig',),
 
@@ -234,27 +235,25 @@ class OSGDecoder(torch.nn.Module):
         #      Conv2dLayer(in_channels=n_features, out_channels=options['decoder_output_dim'], kernel_size=1,
         #                  activation='relu'),])
 
-    def forward(self, sampled_features, coordinates, full_rendering_res, bypass_network=False):
+    def forward(self, sampled_features, full_rendering_res, bypass_network=False):
+        """sampled_features: batch_size, num_pts, pln_chnls"""
         # Aggregate features
         # print(f'feature:{sampled_features[0, :, 100, :4]}')
         # sampled_features = sampled_features.mean(1, keepdim=True)
         rend_cols = full_rendering_res[0]
         time_steps = full_rendering_res[-1]
-        batch_size, planes, num_pts, pln_chnls = sampled_features.shape
+        batch_size, num_pts, pln_chnls = sampled_features.shape
 
-        ws = torch.zeros((batch_size * planes // 3 * time_steps, 3, 4), dtype=sampled_features.dtype,
+        ws = torch.zeros((batch_size * time_steps, 3, 4), dtype=sampled_features.dtype,
                          device=sampled_features.device)
-        # features received as -> b, num_planes, num_pts, feature_dim, where -> num_pts = row_cods * col_cods * t_cods
-        x = sampled_features.permute(0, 2, 1, 3).reshape(batch_size, rend_cols, rend_cols, time_steps, planes,
-                                                         pln_chnls)
-        # permuted to b, num_pts, num_planes, feature, then reshaped
+        # features received as -> b, num_pts, feature_dim, where -> num_pts = row_cods * col_cods * t_cods
+        x = sampled_features.reshape(batch_size, rend_cols, rend_cols, time_steps, pln_chnls)
         # -----------------------------------------------------------------------------------------------
-        x = x.permute(0, 3, 1, 2, 4, 5).reshape(batch_size * time_steps, rend_cols, rend_cols, planes, pln_chnls)
-        # permuted to b, time_steps, rows, cols, num_planes, features then reshaped
+        x = x.permute(0, 3, 1, 2, 4).reshape(batch_size * time_steps, rend_cols, rend_cols, pln_chnls)
+        # permuted to b, time_steps, rows, cols, features then reshaped
         # -----------------------------------------------------------------------------------------------
-        x = x.permute(0, 3, 4, 1, 2).reshape(batch_size * time_steps * planes//3, 3 * pln_chnls, rend_cols,
-                                             rend_cols)
-        # permuted to b*time_steps, planes, plane_channels, rows, cols
+        x = x.permute(0, 3, 1, 2).reshape(batch_size * time_steps, pln_chnls, rend_cols, rend_cols)
+        # permuted to b*time_steps, plane_channels, rows, cols
         # -----------------------------------------------------------------------------------------------
 
             # import ipdb; ipdb.set_trace()
@@ -284,10 +283,10 @@ class OSGDecoder(torch.nn.Module):
                 # x = mod_layer(x)
                 # synth_h = synth_h * x
 
-        img = img.reshape(batch_size, time_steps, planes//3, 3, rend_cols, rend_cols).sum(dim=2)
+        img = img.reshape(batch_size, time_steps, 3, rend_cols, rend_cols)
         # b, time, color, row, col
         img = img.permute(0, 3, 4, 1, 2).reshape(batch_size, num_pts, 3)
-        synth_h = synth_h.view(batch_size, time_steps, planes//3, -1, rend_cols, rend_cols).sum(dim=2)
+        synth_h = synth_h.view(batch_size, time_steps, -1, rend_cols, rend_cols)
         synth_h = synth_h.permute(0, 3, 4, 1, 2).reshape(batch_size, num_pts, -1)
 
         return {'rgb': img.squeeze(), 'features': synth_h.squeeze()}

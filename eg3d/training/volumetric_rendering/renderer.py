@@ -13,36 +13,27 @@ The renderer is a module that takes in rays, decides where to sample along each
 ray, and computes pixel colors using the volume rendering equation.
 """
 
-import math
-
-import ipdb
-import numpy as np
 import torch
-import torch.nn as nn
 
-from training.volumetric_rendering.ray_marcher import MipRayMarcher2
-from training.volumetric_rendering import math_utils
-import random
 
-def generate_planes(num_planes):
+def generate_planes():
     """
     Defines planes by the three vectors that form the "axes" of the
     plane. Should work with arbitrary number of planes and planes of
     arbitrary orientation.
     """
-    assert num_planes % 3 == 0, f'num_planes should be multiple of 3 given {num_planes}'
-    # return torch.tensor([[[1, 0, 0],
-    #                         [0, 1, 0],  #XY
-    #                         [0, 0, 1]],
-    #
-    #                         [[1, 0, 0],
-    #                         [0, 0, 1],  #XT
-    #                         [0, 1, 0]],
-    #
-    #                         [[0, 1, 0],
-    #                         [0, 0, 1],  # YT
-    #                         [1, 0, 0]]], dtype=torch.float32)
-    return torch.randn((num_planes, 3, 3), dtype=torch.float32)
+    return torch.tensor([[[1, 0, 0],  # XY
+                          [0, 1, 0],
+                          [0, 0, 1]],
+
+                         [[1, 0, 0],  # XZ
+                          [0, 0, 1],
+                          [0, 1, 0]],
+
+                         [[0, 0, 1],  # ZY
+                          [0, 1, 0],
+                          [1, 0, 0]]], dtype=torch.float32)
+
 
 def project_onto_planes(planes, coordinates):
     """
@@ -55,50 +46,26 @@ def project_onto_planes(planes, coordinates):
     """
     N, M, C = coordinates.shape
     n_planes, _, _ = planes.shape
-
-    planes_x = planes[:, :, 0] / torch.linalg.norm(planes[:, :, 0], dim=-1, keepdim=True)
-    planes_y = planes[:, :, 1] / torch.linalg.norm(planes[:, :, 1], dim=-1, keepdim=True)
-    planes_y_perp = planes_y - planes_x * (torch.bmm(planes_x[:, None, :], planes_y[..., None]))[:, :, 0]
-    planes_y_perp = planes_y_perp / torch.linalg.norm(planes_y_perp, dim=1, keepdim=True)
-    planes_z = torch.cross(planes_x, planes_y_perp)
-    orthogonalized_planes = torch.cat([planes_x[..., None], planes_y_perp[..., None], planes_z[..., None]], dim=-1)
-
     coordinates = coordinates.unsqueeze(1).expand(-1, n_planes, -1, -1).reshape(N*n_planes, M, 3)
-    cod_norms = torch.linalg.norm(coordinates, dim=-1, keepdim=True)
-    inv_planes = torch.linalg.inv(orthogonalized_planes).unsqueeze(0).expand(N, -1, -1, -1).reshape(N*n_planes, 3, 3)
-
-    # import ipdb; ipdb.set_trace()
-
+    inv_planes = torch.linalg.inv(planes).unsqueeze(0).expand(N, -1, -1, -1).reshape(N*n_planes, 3, 3)
     projections = torch.bmm(coordinates, inv_planes)
-    proj_norm = torch.linalg.norm(projections, dim=-1, keepdim=True)
-    projections = projections * (cod_norms / proj_norm)
-    # import ipdb; ipdb.set_trace()
     return projections[..., :2]
 
 
-def sample_from_planes(plane_axes, plane_features, coordinates,
-                       # mode='bilinear',
-                       mode='bicubic',
-                       padding_mode='zeros', box_warp=None,
-                       bypass_network=False):
+def sample_from_planes(plane_axes, plane_features, coordinates, mode='bilinear', padding_mode='zeros', box_warp=None):
     assert padding_mode == 'zeros'
-    batch_size, n_planes, C, H, W = plane_features.shape
-    _, num_pts, _ = coordinates.shape
+    N, n_planes, C, H, W = plane_features.shape
+    _, M, _ = coordinates.shape
+    plane_features = plane_features.reshape(N*n_planes, C, H, W)
 
-    if bypass_network:
-        output_features = coordinates.view(batch_size, 1, num_pts, 3).repeat(1, n_planes, 1, 1)
-    else:
-        plane_features = plane_features.view(batch_size*n_planes, C, H, W)
+    # coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
 
-        # coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
-        coordinates = box_warp * coordinates # TODO: add specific box bounds
-
-        projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
-        # import ipdb; ipdb.set_trace()
-        output_features = torch.nn.functional.grid_sample(
-            plane_features, projected_coordinates.float(), mode=mode, padding_mode=padding_mode,
-            align_corners=False).permute(0, 3, 2, 1).reshape(batch_size, n_planes, num_pts, C)
+    projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
+    output_features = torch.nn.functional.grid_sample(plane_features, projected_coordinates.float(), mode=mode,
+                                                      padding_mode=padding_mode, align_corners=False)
+    output_features = output_features.permute(0, 3, 2, 1).reshape(N, n_planes, M, C)
     return output_features
+
 
 def sample_from_3dgrid(grid, coordinates):
     """
@@ -115,202 +82,98 @@ def sample_from_3dgrid(grid, coordinates):
     sampled_features = sampled_features.permute(0, 4, 3, 2, 1).reshape(N, H*W*D, C)
     return sampled_features
 
-
-class ImportanceRenderer(torch.nn.Module):
-    def __init__(self, num_planes):
+class BaseRenderer(torch.nn.Module):
+    def __init__(self):
         super().__init__()
-        self.ray_marcher = MipRayMarcher2()
-        self.plane_axes = torch.nn.Parameter(generate_planes(num_planes))
-        # self.plane_axes = generate_planes()
+        # self.plane_axes = torch.nn.Parameter(generate_planes(num_planes))
+        self.register_buffer('plane_axes', generate_planes())
 
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
-        self.plane_axes = self.plane_axes.to(ray_origins.device)
+        raise NotImplementedError()
 
-        if rendering_options['ray_start'] == rendering_options['ray_end'] == 'auto':
-            ray_start, ray_end = math_utils.get_ray_limits_box(ray_origins, ray_directions, box_side_length=rendering_options['box_warp'])
-            is_ray_valid = ray_end > ray_start
-            if torch.any(is_ray_valid).item():
-                ray_start[~is_ray_valid] = ray_start[is_ray_valid].min()
-                ray_end[~is_ray_valid] = ray_start[is_ray_valid].max()
-            depths_coarse = self.sample_stratified(ray_origins, ray_start, ray_end, rendering_options['depth_resolution'], rendering_options['disparity_space_sampling'])
-        else:
-            # Create stratified depth samples
-            depths_coarse = self.sample_stratified(ray_origins, rendering_options['ray_start'], rendering_options['ray_end'], rendering_options['depth_resolution'], rendering_options['disparity_space_sampling'])
+    def get_motion_feature_vol(self, planes, options, bypass_network):
+        """ Planes: batch_size, n_planes, channels, h, w ; n_planes == 1 is assumed later
+            return lf_gfc_mask: batch, rend_res, rend_res, rend_res, 6
+        """
 
-        batch_size, num_rays, samples_per_ray, _ = depths_coarse.shape
-
-        # Coarse Pass
-        sample_coordinates = (ray_origins.unsqueeze(-2) + depths_coarse * ray_directions.unsqueeze(-2)).reshape(batch_size, -1, 3)
-        sample_directions = ray_directions.unsqueeze(-2).expand(-1, -1, samples_per_ray, -1).reshape(batch_size, -1, 3)
-
-
-        out = self.run_model(planes, decoder, sample_coordinates, sample_directions, rendering_options)
-        colors_coarse = out['rgb']
-        densities_coarse = out['sigma']
-        colors_coarse = colors_coarse.reshape(batch_size, num_rays, samples_per_ray, colors_coarse.shape[-1])
-        densities_coarse = densities_coarse.reshape(batch_size, num_rays, samples_per_ray, 1)
-
-        # Fine Pass
-        N_importance = rendering_options['depth_resolution_importance']
-        if N_importance > 0:
-            _, _, weights = self.ray_marcher(colors_coarse, densities_coarse, depths_coarse, rendering_options)
-
-            depths_fine = self.sample_importance(depths_coarse, weights, N_importance)
-
-            sample_directions = ray_directions.unsqueeze(-2).expand(-1, -1, N_importance, -1).reshape(batch_size, -1, 3)
-            sample_coordinates = (ray_origins.unsqueeze(-2) + depths_fine * ray_directions.unsqueeze(-2)).reshape(batch_size, -1, 3)
-
-            out = self.run_model(planes, decoder, sample_coordinates, sample_directions, rendering_options)
-            colors_fine = out['rgb']
-            densities_fine = out['sigma']
-            colors_fine = colors_fine.reshape(batch_size, num_rays, N_importance, colors_fine.shape[-1])
-            densities_fine = densities_fine.reshape(batch_size, num_rays, N_importance, 1)
-
-            all_depths, all_colors, all_densities = self.unify_samples(depths_coarse, colors_coarse, densities_coarse,
-                                                                  depths_fine, colors_fine, densities_fine)
-
-            # Aggregate
-            rgb_final, depth_final, weights = self.ray_marcher(all_colors, all_densities, all_depths, rendering_options)
-        else:
-            rgb_final, depth_final, weights = self.ray_marcher(colors_coarse, densities_coarse, depths_coarse, rendering_options)
+        batch, _, _, _, _ = planes.shape
+        rend_res = options['neural_rendering_resolution']
+        dtype, device = planes.dtype, planes.device
+        cod_x = cod_y = cod_z = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
+        grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
+        coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
+        coordinates = coordinates.reshape(1, -1, 3).expand(batch, -1, -1)
+        lf_gfc_mask = sample_from_planes(self.plane_axes, planes, coordinates, padding_mode='zeros',
+                                         box_warp=options['box_warp'])
+        # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 1
+        lf_gfc_mask = lf_gfc_mask.reshape(batch, rend_res, rend_res, rend_res, 6)
+        return lf_gfc_mask
 
 
-        return rgb_final, depth_final, weights.sum(2)
+class AxisAligndProjectionRenderer(BaseRenderer):
+    def __init__(self, return_video, num_planes):
+        # self.neural_rendering_resolution = neural_rendering_resolution
+        self.return_video = return_video
+        super().__init__()
+        self.appearance_volume = None
 
-    def run_model(self, planes, decoder, sample_coordinates, options, bypass_network=False):
-        sampled_features = sample_from_planes(self.plane_axes, planes, sample_coordinates, padding_mode='zeros',
-                                              box_warp=options['box_warp'], bypass_network=bypass_network)
+    def forward_warp(self, feature_frame, grid):
+        return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=False, padding_mode='reflection')
 
-        out = decoder(sampled_features, coordinates=sample_coordinates,
+    def prepare_feature_volume(self, planes, options, bypass_network=False):
+        """Plane: a torch tensor b, 1, 38, h, w"""
+        rend_res = options['neural_rendering_resolution']
+        # fist 6 are assumed to be motion features
+        batch, _, channels, h, w = planes.shape
+        motion_feature_planes = planes[:, :, :6, :, :].reshape(batch, 3, -1, h, w)
+        lf_gfc_mask = self.get_motion_feature_vol(motion_feature_planes, options, bypass_network)
+        # lf_gfc_mask is of shape batch, rend_res, rend_res, rend_res, 6
+        global_appearance_features = planes[:, 0, 6:, :, :]
+
+        appearance_volume = []
+        prev_frame = None
+        for time_id in range(rend_res):
+            global_features = self.forward_warp(global_appearance_features, lf_gfc_mask[:, :, :, time_id, 2:4])
+            if prev_frame is None:
+                prev_frame = current_frame = global_features
+            else:
+                fwd_frm = self.forward_warp(prev_frame, lf_gfc_mask[:, :, :, time_id, :2])
+                mask = (lf_gfc_mask[:, :, :, time_id, 4] + 1) / 2
+                prev_frame = current_frame = global_features * mask[:, None, ...] + fwd_frm * (1 - mask[:, None, ...])
+
+            appearance_volume.append(current_frame)
+
+        appearance_volume = torch.stack(appearance_volume, dim=0)  # shape: t, batch, app_feat, h, w
+        self.appearance_volume = appearance_volume.permute(1, 2, 3, 4, 0)  # shape: batch, app_feat, h, w, t
+
+    def get_rgb_given_coordinate(self, decoder, sample_coordinates, options, bypass_network=False):
+        batch, n_pt, dims = sample_coordinates.shape
+        assert dims == 3
+        sample_coordinates = sample_coordinates.reshape(batch, 1, 1, n_pt, dims)
+        sampled_features = torch.nn.functional.grid_sample(self.appearance_volume, sample_coordinates,
+                                                           align_corners=False).squeeze()
+        sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
+
+        out = decoder(sampled_features,
                       full_rendering_res=(options['neural_rendering_resolution'],
                                           options['neural_rendering_resolution'],
                                           options['time_steps']),
                       bypass_network=bypass_network)
         if options.get('density_noise', 0) > 0:
-            out['sigma'] += torch.randn_like(out['sigma']) * options['density_noise']
+            raise NotImplementedError('This feature has been removed')
         return out
-
-    def sort_samples(self, all_depths, all_colors, all_densities):
-        _, indices = torch.sort(all_depths, dim=-2)
-        all_depths = torch.gather(all_depths, -2, indices)
-        all_colors = torch.gather(all_colors, -2, indices.expand(-1, -1, -1, all_colors.shape[-1]))
-        all_densities = torch.gather(all_densities, -2, indices.expand(-1, -1, -1, 1))
-        return all_depths, all_colors, all_densities
-
-    def unify_samples(self, depths1, colors1, densities1, depths2, colors2, densities2):
-        all_depths = torch.cat([depths1, depths2], dim = -2)
-        all_colors = torch.cat([colors1, colors2], dim = -2)
-        all_densities = torch.cat([densities1, densities2], dim = -2)
-
-        _, indices = torch.sort(all_depths, dim=-2)
-        all_depths = torch.gather(all_depths, -2, indices)
-        all_colors = torch.gather(all_colors, -2, indices.expand(-1, -1, -1, all_colors.shape[-1]))
-        all_densities = torch.gather(all_densities, -2, indices.expand(-1, -1, -1, 1))
-
-        return all_depths, all_colors, all_densities
-
-    def sample_stratified(self, ray_origins, ray_start, ray_end, depth_resolution, disparity_space_sampling=False):
-        """
-        Return depths of approximately uniformly spaced samples along rays.
-        """
-        N, M, _ = ray_origins.shape
-        if disparity_space_sampling:
-            depths_coarse = torch.linspace(0,
-                                    1,
-                                    depth_resolution,
-                                    device=ray_origins.device).reshape(1, 1, depth_resolution, 1).repeat(N, M, 1, 1)
-            depth_delta = 1/(depth_resolution - 1)
-            depths_coarse += torch.rand_like(depths_coarse) * depth_delta
-            depths_coarse = 1./(1./ray_start * (1. - depths_coarse) + 1./ray_end * depths_coarse)
-        else:
-            if type(ray_start) == torch.Tensor:
-                depths_coarse = math_utils.linspace(ray_start, ray_end, depth_resolution).permute(1,2,0,3)
-                depth_delta = (ray_end - ray_start) / (depth_resolution - 1)
-                depths_coarse += torch.rand_like(depths_coarse) * depth_delta[..., None]
-            else:
-                depths_coarse = torch.linspace(ray_start, ray_end, depth_resolution, device=ray_origins.device).reshape(1, 1, depth_resolution, 1).repeat(N, M, 1, 1)
-                depth_delta = (ray_end - ray_start)/(depth_resolution - 1)
-                depths_coarse += torch.rand_like(depths_coarse) * depth_delta
-
-        return depths_coarse
-
-    def sample_importance(self, z_vals, weights, N_importance):
-        """
-        Return depths of importance sampled points along rays. See NeRF importance sampling for more.
-        """
-        with torch.no_grad():
-            batch_size, num_rays, samples_per_ray, _ = z_vals.shape
-
-            z_vals = z_vals.reshape(batch_size * num_rays, samples_per_ray)
-            weights = weights.reshape(batch_size * num_rays, -1) # -1 to account for loss of 1 sample in MipRayMarcher
-
-            # smooth weights
-            weights = torch.nn.functional.max_pool1d(weights.unsqueeze(1).float(), 2, 1, padding=1)
-            weights = torch.nn.functional.avg_pool1d(weights, 2, 1).squeeze()
-            weights = weights + 0.01
-
-            z_vals_mid = 0.5 * (z_vals[: ,:-1] + z_vals[: ,1:])
-            importance_z_vals = self.sample_pdf(z_vals_mid, weights[:, 1:-1],
-                                             N_importance).detach().reshape(batch_size, num_rays, N_importance, 1)
-        return importance_z_vals
-
-    def sample_pdf(self, bins, weights, N_importance, det=False, eps=1e-5):
-        """
-        Sample @N_importance samples from @bins with distribution defined by @weights.
-        Inputs:
-            bins: (N_rays, N_samples_+1) where N_samples_ is "the number of coarse samples per ray - 2"
-            weights: (N_rays, N_samples_)
-            N_importance: the number of samples to draw from the distribution
-            det: deterministic or not
-            eps: a small number to prevent division by zero
-        Outputs:
-            samples: the sampled samples
-        """
-        N_rays, N_samples_ = weights.shape
-        weights = weights + eps # prevent division by zero (don't do inplace op!)
-        pdf = weights / torch.sum(weights, -1, keepdim=True) # (N_rays, N_samples_)
-        cdf = torch.cumsum(pdf, -1) # (N_rays, N_samples), cumulative distribution function
-        cdf = torch.cat([torch.zeros_like(cdf[: ,:1]), cdf], -1)  # (N_rays, N_samples_+1)
-                                                                   # padded to 0~1 inclusive
-
-        if det:
-            u = torch.linspace(0, 1, N_importance, device=bins.device)
-            u = u.expand(N_rays, N_importance)
-        else:
-            u = torch.rand(N_rays, N_importance, device=bins.device)
-        u = u.contiguous()
-
-        inds = torch.searchsorted(cdf, u, right=True)
-        below = torch.clamp_min(inds-1, 0)
-        above = torch.clamp_max(inds, N_samples_)
-
-        inds_sampled = torch.stack([below, above], -1).view(N_rays, 2*N_importance)
-        cdf_g = torch.gather(cdf, 1, inds_sampled).view(N_rays, N_importance, 2)
-        bins_g = torch.gather(bins, 1, inds_sampled).view(N_rays, N_importance, 2)
-
-        denom = cdf_g[...,1]-cdf_g[...,0]
-        denom[denom<eps] = 1 # denom equals 0 means a bin has weight 0, in which case it will not be sampled
-                             # anyway, therefore any value for it is fine (set to 1 here)
-
-        samples = bins_g[...,0] + (u-cdf_g[...,0])/denom * (bins_g[...,1]-bins_g[...,0])
-        return samples
-
-
-class AxisAligndProjectionRenderer(ImportanceRenderer):
-    def __init__(self, return_video, num_planes):
-        # self.neural_rendering_resolution = neural_rendering_resolution
-        self.return_video = return_video
-        super().__init__(num_planes)
 
     def forward(self, planes, decoder, c, ray_directions, rendering_options):
         # assert ray_origins is None  # This will be ignored silently
         # assert ray_directions is None   # This will be ignored silently
         device = planes.device
         datatype = planes.dtype
-        self.plane_axes = self.plane_axes.to(device)
-        #
+        # self.plane_axes = self.plane_axes.to(device)
+        self.prepare_feature_volume(planes, rendering_options, bypass_network=False)
 
-        batch_size, _, planes_ch, _, _ = planes.shape  # get batch size! ray_origins.shape
+        batch_size, num_planes, planes_ch, _, _ = planes.shape
+
+        assert num_planes == 1, 'right now appearance planes and 3 flow planes are all in channel dim'
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device)
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device)
@@ -357,7 +220,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         # sample_directions = sample_coordinates
 
         rendering_options['time_steps'] = 1
-        out = self.run_model(planes, decoder, sample_coordinates, rendering_options)
+        out = self.get_rgb_given_coordinate(decoder, sample_coordinates, rendering_options)
         colors_coarse, features = out['rgb'], out['features']
 
         # render peep video
@@ -380,7 +243,7 @@ class AxisAligndProjectionRenderer(ImportanceRenderer):
         video_coordinates = torch.stack(video_coordinates, dim=0).reshape(batch_size, -1, 3)
         rendering_options['neural_rendering_resolution'] = video_spatial_res
         rendering_options['time_steps'] = vide_time_res
-        out = self.run_model(planes, decoder, video_coordinates, rendering_options)
+        out = self.get_rgb_given_coordinate(decoder, video_coordinates, rendering_options)
         peep_vid = out['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
             .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
 

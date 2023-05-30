@@ -180,7 +180,7 @@ class StyleGAN2Loss(Loss):
         #         c_swapped = torch.roll(gen_c.clone(), 1, 0)
         #         c_gen_conditioning = torch.where(torch.rand([], device=gen_c.device) < swapping_prob, c_swapped, gen_c)
         #     else:
-        #         c_gen_conditioning = torch.zeros_like(gen_c) 
+        #         c_gen_conditioning = torch.zeros_like(gen_c)
         #
         #     ws = self.G.mapping(gen_z, c_gen_conditioning, update_emas=False)
         #
