@@ -91,14 +91,42 @@ class BaseRenderer(torch.nn.Module):
         self.motion_features = motion_features
 
         self.motion_encoder = torch.nn.Sequential(
-            torch.nn.Linear(motion_features, 64),
+            torch.nn.Linear(motion_features, 64, bias=True),
             torch.nn.ReLU(),
-            torch.nn.Linear(64, 5),
-            torch.nn.Tanh()
+            torch.nn.Linear(64, 5, bias=True),
+            # torch.nn.Tanh()
         )
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, torch.nn.Linear):
+            torch.nn.init.trunc_normal_(module.weight.data, mean=0, std=0.15, a=-1, b=1)
+            if module.bias is not None:
+                module.bias.data.zero_()
 
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
         raise NotImplementedError()
+
+    def get_3D_grid(self, rend_res, dtype, device):
+        cod_x = cod_y = cod_z = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
+        grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
+        coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
+        return coordinates
+
+    def get_2D_grid(self, rend_res, dtype, device):
+        cod_x = cod_y = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
+        grid_x, grid_y = torch.meshgrid(cod_x, cod_y, indexing='ij')
+        coordinates = torch.stack((grid_x, grid_y), dim=0).permute(1, 2, 0)
+        # coordinates = coordinates.reshape(1, -1, 2).expand(batch, -1, -1)
+        return coordinates
+
+    def get_identity_flow_and_mask(self, flow_and_mask_shape, dtype, device):
+        assert flow_and_mask_shape[0] == flow_and_mask_shape[1]
+        identity_lf = self.get_2D_grid(flow_and_mask_shape[0], dtype, device)[None, ...]
+        identity_gfc = identity_lf
+        identity_mask = torch.ones(flow_and_mask_shape, dtype=dtype, device=device)[None, ..., None] * 0.5
+        identity_lf_gfc_mask = torch.cat((identity_lf, identity_gfc, identity_mask), dim=-1)
+        return identity_lf_gfc_mask
 
     def get_motion_feature_vol(self, planes, options, bypass_network):
         """ Planes: batch_size, n_planes, channels, h, w ; n_planes == 1 is assumed later
@@ -108,17 +136,22 @@ class BaseRenderer(torch.nn.Module):
         batch, _, _, _, _ = planes.shape
         rend_res = options['neural_rendering_resolution']
         dtype, device = planes.dtype, planes.device
-        cod_x = cod_y = cod_z = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
-        grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
-        coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
-        coordinates = coordinates.reshape(1, -1, 3).expand(batch, -1, -1)
+        coordinates = self.get_3D_grid(rend_res, dtype, device).reshape(1, -1, 3).expand(batch, -1, -1)
         # import ipdb; ipdb.set_trace()
         lf_gfc_mask = sample_from_planes(self.plane_axes, planes, coordinates, padding_mode='zeros',
                                          box_warp=options['box_warp'])
         # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 1
         lf_gfc_mask = lf_gfc_mask.reshape(batch, rend_res, rend_res, rend_res, self.motion_features)
-        # import ipdb;ipdb.set_trace()
-        return self.motion_encoder(lf_gfc_mask)
+
+        identity_flow_and_mask = self.get_identity_flow_and_mask((rend_res, rend_res), dtype, device)
+        identity_flow_and_mask = identity_flow_and_mask[:, :, :, None, :].expand(batch, -1, -1, rend_res, -1)
+        # import ipdb; ipdb.set_trace()
+        generated_flow_mask = self.motion_encoder(lf_gfc_mask)
+        generated_flow_mask[:, :, :, :, :4] = \
+            generated_flow_mask[:, :, :, :, :4]/64 + identity_flow_and_mask[:, :, :, :, :4]  # just keeping flow low
+        # making sure mask is between -1 and 1, it will be later normalized
+        generated_flow_mask[:, :, :, :, 4:] = torch.nn.functional.tanh(generated_flow_mask[:, :, :, :, 4:])
+        return generated_flow_mask
 
 
 class AxisAligndProjectionRenderer(BaseRenderer):
