@@ -61,6 +61,7 @@ def sample_from_planes(plane_axes, plane_features, coordinates, mode='bilinear',
     # coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
 
     projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
+    # import ipdb; ipdb.set_trace()
     output_features = torch.nn.functional.grid_sample(plane_features, projected_coordinates.float(), mode=mode,
                                                       padding_mode=padding_mode, align_corners=False)
     output_features = output_features.permute(0, 3, 2, 1).reshape(N, n_planes, M, C)
@@ -83,10 +84,18 @@ def sample_from_3dgrid(grid, coordinates):
     return sampled_features
 
 class BaseRenderer(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, motion_features):
         super().__init__()
         # self.plane_axes = torch.nn.Parameter(generate_planes(num_planes))
         self.register_buffer('plane_axes', generate_planes())
+        self.motion_features = motion_features
+
+        self.motion_encoder = torch.nn.Sequential(
+            torch.nn.Linear(motion_features, 64),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, 5),
+            torch.nn.Tanh()
+        )
 
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
         raise NotImplementedError()
@@ -103,18 +112,20 @@ class BaseRenderer(torch.nn.Module):
         grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
         coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
         coordinates = coordinates.reshape(1, -1, 3).expand(batch, -1, -1)
+        # import ipdb; ipdb.set_trace()
         lf_gfc_mask = sample_from_planes(self.plane_axes, planes, coordinates, padding_mode='zeros',
                                          box_warp=options['box_warp'])
         # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 1
-        lf_gfc_mask = lf_gfc_mask.reshape(batch, rend_res, rend_res, rend_res, 6)
-        return lf_gfc_mask
+        lf_gfc_mask = lf_gfc_mask.reshape(batch, rend_res, rend_res, rend_res, self.motion_features)
+        # import ipdb;ipdb.set_trace()
+        return self.motion_encoder(lf_gfc_mask)
 
 
 class AxisAligndProjectionRenderer(BaseRenderer):
-    def __init__(self, return_video, num_planes):
+    def __init__(self, return_video, motion_features):
         # self.neural_rendering_resolution = neural_rendering_resolution
         self.return_video = return_video
-        super().__init__()
+        super().__init__(motion_features)
         self.appearance_volume = None
 
     def forward_warp(self, feature_frame, grid):
@@ -125,10 +136,10 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         rend_res = options['neural_rendering_resolution']
         # fist 6 are assumed to be motion features
         batch, _, channels, h, w = planes.shape
-        motion_feature_planes = planes[:, :, :6, :, :].reshape(batch, 3, -1, h, w)
+        motion_feature_planes = planes[:, :, :self.motion_features, :, :].reshape(batch, 3, -1, h, w)
         lf_gfc_mask = self.get_motion_feature_vol(motion_feature_planes, options, bypass_network)
         # lf_gfc_mask is of shape batch, rend_res, rend_res, rend_res, 6
-        global_appearance_features = planes[:, 0, 6:, :, :]
+        global_appearance_features = planes[:, 0, self.motion_features:, :, :]
 
         appearance_volume = []
         prev_frame = None
