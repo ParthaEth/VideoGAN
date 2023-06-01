@@ -27,6 +27,7 @@ import legacy
 from camera_utils import LookAtPoseSampler, FOV_to_intrinsics
 from torch_utils import misc
 from training.triplane import TriPlaneGenerator
+from torchvision.utils import flow_to_image, make_grid
 
 
 #----------------------------------------------------------------------------
@@ -195,11 +196,23 @@ def generate_images(
             # import ipdb; ipdb.set_trace()
 
             ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
-            img_batch = G.synthesis(ws, conditioning_params, noise_mode='const')[img_type]
+            g_out = G.synthesis(ws, conditioning_params, noise_mode='const')
+            # import ipdb; ipdb.set_trace()
+            img_batch = g_out[img_type]
+            img_batch = (img_batch * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
 
-            img_batch = (img_batch.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-            for img in img_batch:
-                video_out.append_data(img.cpu().numpy())
+            flows_and_masks = g_out['flows_and_masks'].reshape(b_size, 5, G.neural_rendering_resolution,
+                                                               G.neural_rendering_resolution)
+            flows_and_masks = torch.nn.functional.interpolate(flows_and_masks, img_batch.shape[-1])
+            # import ipdb; ipdb.set_trace()
+            local_flow = flow_to_image(flows_and_masks[:, 0:2])
+            global_flow = flow_to_image(flows_and_masks[:, 2:4])
+            mask = (flows_and_masks[:, 4:5] * 127.5 + 127.5).expand(-1, 3, -1, -1).to(torch.uint8)
+            # import ipdb; ipdb.set_trace()
+
+            for i in range(b_size):
+                video_frame = make_grid([img_batch[i], local_flow[i], global_flow[i], mask[i]], 4, pad_value=255)
+                video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
 
         video_out.close()
 

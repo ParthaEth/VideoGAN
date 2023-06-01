@@ -148,10 +148,10 @@ class BaseRenderer(torch.nn.Module):
         # import ipdb; ipdb.set_trace()
         generated_flow_mask = self.motion_encoder(lf_gfc_mask)
         generated_flow_mask[:, :, :, :, :4] = \
-            generated_flow_mask[:, :, :, :, :4]/64 + identity_flow_and_mask[:, :, :, :, :4]  # just keeping flow low
+            generated_flow_mask[:, :, :, :, :4]/16 + identity_flow_and_mask[:, :, :, :, :4]  # just keeping flow low
         # making sure mask is between -1 and 1, it will be later normalized
         generated_flow_mask[:, :, :, :, 4:] = torch.nn.functional.tanh(generated_flow_mask[:, :, :, :, 4:])
-        return generated_flow_mask
+        return generated_flow_mask  # batch, rend_res, rend_res, rend_res, 5
 
 
 class AxisAligndProjectionRenderer(BaseRenderer):
@@ -160,44 +160,57 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         self.return_video = return_video
         super().__init__(motion_features)
         self.appearance_volume = None
+        self.lf_gfc_mask = None
 
     def forward_warp(self, feature_frame, grid):
-        return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=False, padding_mode='reflection')
+        return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=True)
 
     def prepare_feature_volume(self, planes, options, bypass_network=False):
         """Plane: a torch tensor b, 1, 38, h, w"""
         rend_res = options['neural_rendering_resolution']
-        # fist 6 are assumed to be motion features
+        # fist self.motion_features are assumed to be motion features
         batch, _, channels, h, w = planes.shape
         motion_feature_planes = planes[:, :, :self.motion_features, :, :].reshape(batch, 3, -1, h, w)
-        lf_gfc_mask = self.get_motion_feature_vol(motion_feature_planes, options, bypass_network)
-        # lf_gfc_mask is of shape batch, rend_res, rend_res, rend_res, 6
+        self.lf_gfc_mask = self.get_motion_feature_vol(motion_feature_planes, options, bypass_network)
+        # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth),
+        # 5 =((w, h), (w, h), mask)
         global_appearance_features = planes[:, 0, self.motion_features:, :, :]
 
         appearance_volume = []
         prev_frame = None
         for time_id in range(rend_res):
-            global_features = self.forward_warp(global_appearance_features, lf_gfc_mask[:, :, :, time_id, 2:4])
+            global_features = self.forward_warp(global_appearance_features, self.lf_gfc_mask[:, :, :, time_id, 2:4])
+            # global_features: batch, ch, h, w notice the assumed convention of lf_gfc_mask
             if prev_frame is None:
                 prev_frame = current_frame = global_features
             else:
-                fwd_frm = self.forward_warp(prev_frame, lf_gfc_mask[:, :, :, time_id, :2])
-                mask = (lf_gfc_mask[:, :, :, time_id, 4] + 1) / 2
+                # prev_frame ust be permuted or else we will be transposing it all the time
+                fwd_frm = self.forward_warp(prev_frame.permute(0, 1, 3, 2), self.lf_gfc_mask[:, :, :, time_id, :2])
+                # import ipdb; ipdb.set_trace()
+                # fwd_frm: batch, ch, h, w notice the assumed convention of lf_gfc_mask
+                mask = (self.lf_gfc_mask[:, :, :, time_id, 4] + 1) / 2
                 prev_frame = current_frame = global_features * mask[:, None, ...] + fwd_frm * (1 - mask[:, None, ...])
 
             appearance_volume.append(current_frame)
 
         appearance_volume = torch.stack(appearance_volume, dim=0)  # shape: t, batch, app_feat, h, w
-        self.appearance_volume = appearance_volume.permute(1, 2, 3, 4, 0)  # shape: batch, app_feat, h, w, t
+        self.appearance_volume = appearance_volume.permute(1, 2, 0, 3, 4)  # shape: batch, app_feat, t, h, w
 
     def get_rgb_given_coordinate(self, decoder, sample_coordinates, options, bypass_network=False):
         batch, n_pt, dims = sample_coordinates.shape
         assert dims == 3
-        sample_coordinates = sample_coordinates.reshape(batch, 1, 1, n_pt, dims)
+        sample_coordinates = sample_coordinates.reshape(batch, 1, 1, n_pt, dims)  # dims := (h, w, t)
+        # self.appearance_volume: batch, app_feat, t, h, w
         sampled_features = torch.nn.functional.grid_sample(self.appearance_volume, sample_coordinates,
-                                                           align_corners=False).squeeze()
+                                                           align_corners=True, padding_mode='border').squeeze()
+        # sampled_features := batch, ch, h, w
         sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
 
+        # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),
+        # 5 =((w, h), (w, h), mask), # sample_coordinates: (batch, npts, dims (dims := h, w, t))
+        # But grid sample assumes sample cods to have depth, with, height ordering so the permutation
+        flows_and_mask = torch.nn.functional.grid_sample(self.lf_gfc_mask.permute(0, 4, 3, 2, 1), sample_coordinates,
+                                                         align_corners=True, padding_mode='border').squeeze()
         out = decoder(sampled_features,
                       full_rendering_res=(options['neural_rendering_resolution'],
                                           options['neural_rendering_resolution'],
@@ -205,6 +218,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
                       bypass_network=bypass_network)
         if options.get('density_noise', 0) > 0:
             raise NotImplementedError('This feature has been removed')
+        out['flows_and_mask'] = flows_and_mask
         return out
 
     def forward(self, planes, decoder, c, ray_directions, rendering_options):
@@ -265,7 +279,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
 
         rendering_options['time_steps'] = 1
         out = self.get_rgb_given_coordinate(decoder, sample_coordinates, rendering_options)
-        colors_coarse, features = out['rgb'], out['features']
+        colors_coarse, features, flows_and_mask = out['rgb'], out['features'], out['flows_and_mask']
 
         # render peep video
         norm_peep_cod = c[:, 4:6] * 2 - 1
@@ -291,4 +305,4 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         peep_vid = out['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
             .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
 
-        return colors_coarse, peep_vid, features
+        return colors_coarse, peep_vid, features, flows_and_mask

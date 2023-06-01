@@ -117,7 +117,8 @@ class TriPlaneGenerator(torch.nn.Module):
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
         #     self.renderer(planes, self.decoder, ray_origins, ray_directions, self.rendering_kwargs) # channels last
-        rgb_image, peep_video, features = self.renderer(planes, self.decoder, c, None, self.rendering_kwargs)  # channels last
+        rgb_image, peep_video, features, flows_and_masks = self.renderer(planes, self.decoder, c, None,
+                                                                         self.rendering_kwargs)  # channels last
 
         # Reshape into 'raw' image
         H = W = self.neural_rendering_resolution
@@ -151,7 +152,7 @@ class TriPlaneGenerator(torch.nn.Module):
         # sr_image = rgb_image
         # rgb_image = self.downscale4x(sr_image)
 
-        return {'image': sr_image, 'image_raw': rgb_image, 'peep_vid': peep_video}
+        return {'image': sr_image, 'image_raw': rgb_image, 'peep_vid': peep_video, 'flows_and_masks': flows_and_masks}
     
     def sample(self, coordinates, directions, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False,
                **synthesis_kwargs):
