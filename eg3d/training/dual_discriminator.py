@@ -204,7 +204,21 @@ class DualPeepDicriminator(torch.nn.Module):
                                                     epilogue_kwargs)
         video_color_channels = 256  # video frame chnannels
         video_resolution = img_resolution//8
-        self.vid_discrim = VideoDiscriminator(seq_length=128, max_edge=32, channels=3, cmap_dim=c_dim)
+        self.vid_discrim = VideoDiscriminator(seq_length=128, max_edge=32, channels=5, cmap_dim=c_dim)
+
+    def get_grid_batch(self, cond_peep_vid, video_spatial_res):
+        datatype, device = cond_peep_vid.dtype, cond_peep_vid.device
+        peep_grid = []
+        for smpl_idx in range(cond_peep_vid.shape[0]):
+            cod_x = torch.linspace(cond_peep_vid[smpl_idx, 4], cond_peep_vid[smpl_idx, 4] + 2 / 4, video_spatial_res,
+                                   dtype=datatype, device=device)
+            cod_y = torch.linspace(cond_peep_vid[smpl_idx, 5], cond_peep_vid[smpl_idx, 5] + 2 / 4, video_spatial_res,
+                                   dtype=datatype, device=device)
+            grid_x, grid_y = torch.meshgrid(cod_x, cod_y, indexing='ij')
+            peep_grid.append(torch.stack((grid_x, grid_y)))
+
+        peep_grid = torch.stack(peep_grid)
+        return peep_grid
 
     def forward(self, img, c, update_emas=False, **block_kwargs):
         cond_img_pair = c.clone()
@@ -214,8 +228,11 @@ class DualPeepDicriminator(torch.nn.Module):
         # b_size, c_ch, h, w, t_steps = img['peep_vid'].shape
         vid_as_b_c_d_h_w = img['peep_vid'].permute(0, 1, 4, 2, 3)[:, :, ::2, :, :]
         cond_peep_vid = c.clone()
-        cond_peep_vid[0:4] = cond_peep_vid[0:4] * 0
-        vid_logits = self.vid_discrim(vid_as_b_c_d_h_w, cond_peep_vid)
+        cond_peep_vid[:, 0:4] = cond_peep_vid[:, 0:4] * 0
+        peep_grid = self.get_grid_batch(cond_peep_vid, vid_as_b_c_d_h_w.shape[-1])  # shape: b, 2, h, w
+        peep_grid = peep_grid[:, :, None, ...].expand(-1, -1, vid_as_b_c_d_h_w.shape[2], -1, -1)  # shape: b, 2, d, h, w
+        vid_as_b_c_d_h_w_pl_cond = torch.cat((vid_as_b_c_d_h_w, peep_grid), dim=1)
+        vid_logits = self.vid_discrim(vid_as_b_c_d_h_w_pl_cond, cond_peep_vid * 0)
 
         return img_pair_logits, vid_logits
 
@@ -373,4 +390,4 @@ class DummyDualDiscriminator(torch.nn.Module):
     def extra_repr(self):
         return f'c_dim={self.c_dim:d}, img_resolution={self.img_resolution:d}, img_channels={self.img_channels:d}'
 
-#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------- 

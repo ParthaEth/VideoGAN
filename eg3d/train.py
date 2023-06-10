@@ -99,9 +99,9 @@ def launch_training(c, desc, outdir, dry_run):
     start_time = time.time()
     shutil.make_archive(os.path.join(c.run_dir, 'running code.zip'), 'zip', '../../VideoGAN')
     end_time = time.time()
-    if end_time - start_time > 1.0:
-        print(f'WARNING: Saving code dir as zip took {end_time - start_time} seconds. it should be less than a second,'
-              f'Make sure you do not have files other than python scripts in here')
+    if end_time - start_time > 10.0:
+        print(f'WARNING: Saving code dir as zip took {end_time - start_time} seconds. it should be less than 10 '
+              f'seconds, Make sure you do not have files other than python scripts in here')
         
     # Launch processes.
     print('Launching processes...')
