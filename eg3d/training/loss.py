@@ -90,6 +90,13 @@ class StyleGAN2Loss(Loss):
             img['image'] = augmented_pair[:, :img['image'].shape[1]]
             img['image_raw'] = torch.nn.functional.interpolate(augmented_pair[:, img['image'].shape[1]:], size=img['image_raw'].shape[2:], mode='bilinear', antialias=True)
 
+            # run augmentation on the video
+            b, chn, h, w, d = img['peep_vid'].shape
+            vid_as_b_chn_h_wxd = img['peep_vid'].reshape(b, chn, h, w*d)
+            # import ipdb; ipdb.set_trace()
+            aug_vid = self.augment_pipe(vid_as_b_chn_h_wxd)
+            img['peep_vid'] = aug_vid.reshape(b, chn, h, w, d)
+
         logits, video_logits = self.D(img, c, update_emas=update_emas)
         return logits, video_logits
 
@@ -288,7 +295,7 @@ class StyleGAN2Loss(Loss):
                 real_img_tmp_image_raw = real_img['image_raw'].detach().requires_grad_(phase in ['Dreg', 'Dboth'])
                 peep_vid_real_temp = peep_vid_real.detach().requires_grad_(phase in ['Dreg', 'Dboth'])
                 real_img_tmp = {'image': real_img_tmp_image, 'image_raw': real_img_tmp_image_raw,
-                                'peep_vid':peep_vid_real_temp}
+                                'peep_vid': peep_vid_real_temp}
 
                 real_logits, real_video_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/real', real_logits)
@@ -307,22 +314,17 @@ class StyleGAN2Loss(Loss):
                     if self.dual_discrimination:
                         with torch.autograd.profiler.record_function('r1_grads'), conv2d_gradfix.no_weight_gradients():
                             r1_grads = torch.autograd.grad(
-                                outputs=[real_logits.sum()],
-                                inputs=[real_img_tmp['image'], real_img_tmp['image_raw'], peep_vid_real_temp],
-                                create_graph=True, only_inputs=True, allow_unused=True)
-
-                            r1_vid_grads = torch.autograd.grad(
-                                outputs=[real_video_logits.sum()],
-                                inputs=[peep_vid_real_temp, ],
+                                outputs=[real_logits.sum() + real_video_logits.sum()],
+                                inputs=[real_img_tmp['image'], real_img_tmp['image_raw'], real_img_tmp['peep_vid']],
                                 create_graph=True, only_inputs=True, allow_unused=True)
 
                             r1_grads_image_pen = r1_grads_image_raw_pen = r1_grads_peep_vid_pen = 0
                             if r1_grads[0] is not None:
-                                r1_grads_image_pen = torch.nan_to_num(r1_grads[0]).square().sum([1,2,3])
+                                r1_grads_image_pen = torch.nan_to_num(r1_grads[0]).square().sum([1, 2, 3])
                             if r1_grads[1] is not None:
-                                r1_grads_image_raw_pen = torch.nan_to_num(r1_grads[1]).square().sum([1,2,3])
-                            if r1_vid_grads[0] is not None:
-                                r1_grads_peep_vid_pen = torch.nan_to_num(r1_vid_grads[0]).square().sum()
+                                r1_grads_image_raw_pen = torch.nan_to_num(r1_grads[1]).square().sum([1, 2, 3])
+                            if r1_grads[2] is not None:
+                                r1_grads_peep_vid_pen = torch.nan_to_num(r1_grads[2]).square().sum([1, 2, 3, 4])
                         r1_penalty = r1_grads_image_pen + r1_grads_image_raw_pen + r1_grads_peep_vid_pen
                     else:  # single discrimination
                         with torch.autograd.profiler.record_function('r1_grads'), conv2d_gradfix.no_weight_gradients():
