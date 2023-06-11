@@ -146,13 +146,15 @@ def modify_condition_data(condition_dict, filenames, new_features):
                                 4.2634,  0.0000,  0.5000,  0.0000,  4.2634,  0.5000,  0.0000,  0.0000,
                                 1.0000]
         # condition_dict[filename]
-
-            if isinstance(new_features[idx], torch.Tensor):
-                processed_new_feature = new_features[idx].detach().cpu().numpy().tolist()
-            elif isinstance(new_features[idx], np.ndarray):
-                processed_new_feature = new_features[idx].tolist()
-            else:
-                raise NotImplementedError(f'feature data type {type(new_features[idx])} cannot be handled!')
+            try:
+                if isinstance(new_features[idx], torch.Tensor):
+                    processed_new_feature = new_features[idx].detach().cpu().numpy().tolist()
+                elif isinstance(new_features[idx], np.ndarray):
+                    processed_new_feature = new_features[idx].tolist()
+                else:
+                    raise NotImplementedError(f'feature data type {type(new_features[idx])} cannot be handled!')
+            except IndexError as e:
+                import ipdb; ipdb.set_trace()
 
             extended_feature = existing_feature + processed_new_feature
             condition_dict[filename] = extended_feature
