@@ -164,7 +164,7 @@ def modify_condition_data(condition_dict, filenames, new_features, src_data_dir,
                     processed_new_feature = new_features[idx].tolist()
                 else:
                     raise NotImplementedError(f'feature data type {type(new_features[idx])} cannot be handled!')
-                if len(new_features[idx]) > 0 and dest_data_dir is not None:
+                if len(processed_new_feature) > 0 and dest_data_dir is not None:
                     shutil.copy(os.path.join(src_data_dir, filename),
                                 os.path.join(dest_data_dir, filename))
             except IndexError as e:
