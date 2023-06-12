@@ -103,6 +103,13 @@ def create_samples(N=256, voxel_origin=[0, 0, 0], cube_length=2.0):
 
 #----------------------------------------------------------------------------
 
+
+def get_identity_flow(rend_res, dtype, device):
+    cod_x = cod_y = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
+    grid_x, grid_y = torch.meshgrid(cod_x, cod_y, indexing='ij')
+    coordinates = torch.stack((grid_x, grid_y), dim=0)
+    return coordinates
+
 @click.command()
 @click.option('--network', 'network_pkl', help='Network pickle filename', required=True)
 @click.option('--seeds', type=parse_range, help='List of random seeds (e.g., \'0,1,4-6\')', required=True)
@@ -167,6 +174,7 @@ def generate_images(
 
     # Generate batch of images.
     b_size = 4
+    identity_grid = get_identity_flow(G.img_resolution, device=device, dtype=torch.float32)
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=30, codec='libx264')
@@ -199,19 +207,28 @@ def generate_images(
             g_out = G.synthesis(ws, conditioning_params, noise_mode='const')
             # import ipdb; ipdb.set_trace()
             img_batch = g_out[img_type]
+            if b_id == 0:
+                local_warped = img_batch
+
             img_batch = (img_batch * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
 
             flows_and_masks = g_out['flows_and_masks'].reshape(b_size, 5, G.neural_rendering_resolution,
                                                                G.neural_rendering_resolution)
             flows_and_masks = torch.nn.functional.interpolate(flows_and_masks, img_batch.shape[-1])
             # import ipdb; ipdb.set_trace()
-            local_flow = flow_to_image(flows_and_masks[:, 0:2])
-            global_flow = flow_to_image(flows_and_masks[:, 2:4])
+            local_flow = flow_to_image(identity_grid[None] - flows_and_masks[:, 0:2])
+            global_flow = flow_to_image(identity_grid[None] - flows_and_masks[:, 2:4])
             mask = (flows_and_masks[:, 4:5] * 127.5 + 127.5).expand(-1, 3, -1, -1).to(torch.uint8)
             # import ipdb; ipdb.set_trace()
 
             for i in range(b_size):
-                video_frame = make_grid([img_batch[i], local_flow[i], global_flow[i], mask[i]], 4, pad_value=255)
+                local_warped = torch.nn.functional.grid_sample(local_warped[0:1],
+                                                               flows_and_masks[i:i+1, 0:2].permute(0, 2, 3, 1),
+                                                               align_corners=False, padding_mode='reflection')
+                local_warped_clmp = (local_warped * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
+                # mask 0 implies only local flow used
+                video_frame = make_grid([local_warped_clmp[0], img_batch[i], local_flow[i], global_flow[i], mask[i]], 5,
+                                        pad_value=255)
                 video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
 
         video_out.close()

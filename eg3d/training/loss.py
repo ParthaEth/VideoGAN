@@ -101,7 +101,7 @@ class StyleGAN2Loss(Loss):
         return logits, video_logits
 
     def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, peep_vid_real, gain, cur_nimg):
-        img_logit_to_video_logit_ratio = np.array([1.0, 0.2], dtype=np.float32)
+        img_logit_to_video_logit_ratio = np.array([1.0, 0.4], dtype=np.float32)
         img_logit_to_video_logit_ratio /= np.linalg.norm(img_logit_to_video_logit_ratio)
         w_i_logit, w_v_logit = img_logit_to_video_logit_ratio
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
@@ -331,7 +331,7 @@ class StyleGAN2Loss(Loss):
                             r1_grads = torch.autograd.grad(outputs=[real_logits.sum()], inputs=[real_img_tmp['image']],
                                                            create_graph=True, only_inputs=True)
                             r1_grads_image = r1_grads[0]
-                        r1_penalty = r1_grads_image.square().sum([1,2,3])
+                        r1_penalty = r1_grads_image.square().sum([1, 2, 3])
                     loss_Dr1 = r1_penalty * (r1_gamma / 2)
                     training_stats.report('Loss/r1_penalty', r1_penalty)
                     training_stats.report('Loss/D/reg', loss_Dr1)
