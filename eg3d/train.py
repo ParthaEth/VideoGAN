@@ -163,7 +163,7 @@ def parse_comma_separated_list(s):
 @click.option('--seed',         help='Random seed', metavar='INT',                              type=click.IntRange(min=0), default=0, show_default=True)
 # @click.option('--fp32',         help='Disable mixed-precision', metavar='BOOL',                 type=bool, default=False, show_default=True)
 @click.option('--nobench',      help='Disable cuDNN benchmarking', metavar='BOOL',              type=bool, default=False, show_default=True)
-@click.option('--workers',      help='DataLoader worker processes', metavar='INT',              type=click.IntRange(min=1), default=3, show_default=True)
+@click.option('--workers',      help='DataLoader worker processes', metavar='INT',              type=click.IntRange(min=0), default=3, show_default=True)
 @click.option('-n','--dry-run', help='Print training options and exit',                         is_flag=True)
 
 # @click.option('--sr_module',    help='Superresolution module', metavar='STR',  type=str, required=True)
@@ -224,7 +224,7 @@ def main(**kwargs):
     c.G_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8)
     c.D_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8)
     c.loss_kwargs = dnnlib.EasyDict(class_name='training.loss.StyleGAN2Loss')
-    c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, prefetch_factor=2)
+    c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=False, prefetch_factor=2)
 
     # Training set.
     c.training_set_kwargs, dataset_name = init_dataset_kwargs(data=opts.data)

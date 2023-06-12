@@ -225,7 +225,7 @@ class ImageFolderDataset(Dataset):
         if image.ndim == 2:
             image = image[:, :, np.newaxis] # HW => HWC
         image = image.transpose(2, 0, 1) # HWC => CHW
-        return image
+        return image[:3]  # forcing 3 channel images
 
     def _load_raw_labels(self):
         fname = 'dataset.json'
@@ -238,6 +238,7 @@ class ImageFolderDataset(Dataset):
         labels = dict(labels)
         labels = [labels[fname.replace('\\', '/')] for fname in self._image_fnames]
         labels = np.array(labels)
+        # import ipdb; ipdb.set_trace()
         labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])
         return labels
 
