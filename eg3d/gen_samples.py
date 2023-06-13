@@ -222,9 +222,10 @@ def generate_images(
             # import ipdb; ipdb.set_trace()
 
             for i in range(b_size):
-                local_warped = torch.nn.functional.grid_sample(local_warped[0:1],
+                local_warped = torch.nn.functional.grid_sample(local_warped[0:1].permute(0, 1, 3, 2),
                                                                flows_and_masks[i:i+1, 0:2].permute(0, 2, 3, 1),
-                                                               align_corners=False, padding_mode='reflection')
+                                                               align_corners=False,)
+                # import ipdb; ipdb.set_trace()
                 local_warped_clmp = (local_warped * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
                 # mask 0 implies only local flow used
                 video_frame = make_grid([local_warped_clmp[0], img_batch[i], local_flow[i], global_flow[i], mask[i]], 5,

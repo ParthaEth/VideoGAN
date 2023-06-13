@@ -146,7 +146,7 @@ class BaseRenderer(torch.nn.Module):
         identity_flow_and_mask = self.get_identity_flow_and_mask((rend_res, rend_res), dtype, device)
         identity_flow_and_mask = identity_flow_and_mask[:, :, :, None, :].expand(batch, -1, -1, rend_res, -1)
         # import ipdb; ipdb.set_trace()
-        generated_flow_mask = self.motion_encoder(lf_gfc_mask)
+        generated_flow_mask = self.motion_encoder(lf_gfc_mask).clone()
         generated_flow_mask[:, :, :, :, :4] = \
             generated_flow_mask[:, :, :, :, :4]/16 + identity_flow_and_mask[:, :, :, :, :4]  # just keeping flow low
         # making sure mask is between -1 and 1, it will be later normalized
@@ -184,7 +184,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             if prev_frame is None:
                 prev_frame = current_frame = global_features
             else:
-                # prev_frame ust be permuted or else we will be transposing it all the time
+                # prev_frame must be permuted or else we will be transposing it all the time
                 fwd_frm = self.forward_warp(prev_frame.permute(0, 1, 3, 2), self.lf_gfc_mask[:, :, :, time_id, :2])
                 # import ipdb; ipdb.set_trace()
                 # fwd_frm: batch, ch, h, w notice the assumed convention of lf_gfc_mask
