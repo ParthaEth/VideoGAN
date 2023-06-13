@@ -185,6 +185,7 @@ def generate_images(
         # x0 = np.random.randint(0, 256 - 40)/256
         # y0 = np.random.randint(0, 256 - 40)/256
         # vel_p_frame = [0, 0]
+        sup_res_factor = G.img_resolution / G.neural_rendering_resolution
         for b_id in range(batches):
 
             conditioning_params = torch.zeros((b_size, G.c_dim), dtype=z.dtype, device=device)
@@ -221,10 +222,13 @@ def generate_images(
             mask = (flows_and_masks[:, 4:5] * 127.5 + 127.5).expand(-1, 3, -1, -1).to(torch.uint8)
             # import ipdb; ipdb.set_trace()
 
+            high_res_flow = (identity_grid[None] -
+                             (identity_grid[None] - flows_and_masks[:, 0:2])/sup_res_factor).permute(0, 2, 3, 1)
             for i in range(b_size):
-                local_warped = torch.nn.functional.grid_sample(local_warped[0:1].permute(0, 1, 3, 2),
-                                                               flows_and_masks[i:i+1, 0:2].permute(0, 2, 3, 1),
-                                                               align_corners=False,)
+                local_warped = torch.nn.functional.grid_sample(
+                    local_warped[0:1].permute(0, 1, 3, 2),
+                    high_res_flow[i:i+1],
+                    align_corners=True,)
                 # import ipdb; ipdb.set_trace()
                 local_warped_clmp = (local_warped * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
                 # mask 0 implies only local flow used
