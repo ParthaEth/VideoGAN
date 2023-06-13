@@ -129,8 +129,8 @@ class BaseRenderer(torch.nn.Module):
         return identity_lf_gfc_mask
 
     def get_motion_feature_vol(self, planes, options, bypass_network):
-        """ Planes: batch_size, n_planes, channels, h, w ; n_planes == 1 is assumed later
-            return lf_gfc_mask: batch, rend_res, rend_res, rend_res, 6
+        """ Planes: batch_size, n_planes, channels, h, w ; n_planes == 3 is assumed later
+            return lf_gfc_mask: batch, rend_res, rend_res, rend_res, 5
         """
 
         batch, _, _, _, _ = planes.shape
@@ -140,7 +140,9 @@ class BaseRenderer(torch.nn.Module):
         # import ipdb; ipdb.set_trace()
         lf_gfc_mask = sample_from_planes(self.plane_axes, planes, coordinates, padding_mode='zeros',
                                          box_warp=options['box_warp'])
-        # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 1
+        # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 3
+        lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3)  # lf_gfc_mask is of shape batch, num_pts, planes, pln_chnls
+        # lf_gfc_mask is of shape batch, num_pts, planes*pln_chnls
         lf_gfc_mask = lf_gfc_mask.reshape(batch, rend_res, rend_res, rend_res, self.motion_features)
 
         identity_flow_and_mask = self.get_identity_flow_and_mask((rend_res, rend_res), dtype, device)
@@ -203,7 +205,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         # self.appearance_volume: batch, app_feat, t, h, w
         sampled_features = torch.nn.functional.grid_sample(self.appearance_volume, sample_coordinates,
                                                            align_corners=True, padding_mode='border').squeeze()
-        # sampled_features := batch, ch, h, w
+        # sampled_features := batch, ch, 1, 1, n_pt -> squeez -> batch, ch, n_pt
         sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
 
         # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),
