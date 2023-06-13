@@ -203,10 +203,12 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         assert dims == 3
         sample_coordinates = sample_coordinates.reshape(batch, 1, 1, n_pt, dims)  # dims := (h, w, t)
         # self.appearance_volume: batch, app_feat, t, h, w
+        # Sample cods are flipping h and width in the following grid sample. swap appearnace feature h, w dims?
         sampled_features = torch.nn.functional.grid_sample(self.appearance_volume, sample_coordinates,
                                                            align_corners=True, padding_mode='border').squeeze()
         # sampled_features := batch, ch, 1, 1, n_pt -> squeez -> batch, ch, n_pt
         sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
+
 
         # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),
         # 5 =((w, h), (w, h), mask), # sample_coordinates: (batch, npts, dims (dims := h, w, t))
