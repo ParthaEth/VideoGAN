@@ -94,7 +94,7 @@ class BaseRenderer(torch.nn.Module):
             torch.nn.Linear(motion_features, 64, bias=True),
             torch.nn.ReLU(),
             torch.nn.Linear(64, 5, bias=True),
-            # torch.nn.Tanh()
+            torch.nn.Tanh()
         )
         self.apply(self._init_weights)
 
@@ -141,6 +141,7 @@ class BaseRenderer(torch.nn.Module):
         lf_gfc_mask = sample_from_planes(self.plane_axes, planes, coordinates, padding_mode='zeros',
                                          box_warp=options['box_warp'])
         # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 3
+        # import ipdb; ipdb.set_trace()
         lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3)  # lf_gfc_mask is of shape batch, num_pts, planes, pln_chnls
         # lf_gfc_mask is of shape batch, num_pts, planes*pln_chnls
         lf_gfc_mask = lf_gfc_mask.reshape(batch, rend_res, rend_res, rend_res, self.motion_features)
@@ -152,7 +153,7 @@ class BaseRenderer(torch.nn.Module):
         generated_flow_mask[:, :, :, :, :4] = \
             generated_flow_mask[:, :, :, :, :4]/16 + identity_flow_and_mask[:, :, :, :, :4]  # just keeping flow low
         # making sure mask is between -1 and 1, it will be later normalized
-        generated_flow_mask[:, :, :, :, 4:] = torch.nn.functional.tanh(generated_flow_mask[:, :, :, :, 4:])
+        # generated_flow_mask[:, :, :, :, 4:] = torch.nn.functional.tanh(generated_flow_mask[:, :, :, :, 4:])
         return generated_flow_mask  # batch, rend_res, rend_res, rend_res, 5
 
 
