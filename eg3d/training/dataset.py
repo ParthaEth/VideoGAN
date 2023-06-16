@@ -206,7 +206,7 @@ class VideoFolderDataset(Dataset):
         self.return_video = return_video
         max_warnings = 1
         self.axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
-        self.peep_window_crop_size = 64
+        self.peep_window_crop_size = 256
         # self.peep_window_rescale_size = 32
 
         if os.path.isdir(self._path):
@@ -297,7 +297,10 @@ class VideoFolderDataset(Dataset):
                 constant_axis = 't'
             else:
                 constant_axis = random.choice(['x', 'y', 't'])
-            peep_location = np.random.randint(0, resolution - self.peep_window_crop_size, 2)
+            if resolution - self.peep_window_crop_size > 0:
+                peep_location = np.random.randint(0, resolution - self.peep_window_crop_size, 2)
+            else:
+                peep_location = np.array([0, 0])
             lbl_cond = self.axis_dict[constant_axis] + [frame_location / resolution, ] + list(
                 peep_location / resolution)
         else:
@@ -342,7 +345,10 @@ class VideoFolderDataset(Dataset):
                 else:
                     constant_axis = random.choice(['x', 'y', 't'])
                 labels[i, :3] = np.array(self.axis_dict[constant_axis])
-            peep_location = np.random.randint(0, self.resolution - self.peep_window_crop_size, (len(labels), 2))
+            if self.resolution - self.peep_window_crop_size > 0:
+                peep_location = np.random.randint(0, self.resolution - self.peep_window_crop_size, 2)
+            else:
+                peep_location = np.array([0, 0])
             labels[:, 4:6] = peep_location / self.resolution
             # import ipdb; ipdb.set_trace()
         else:

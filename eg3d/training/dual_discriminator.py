@@ -234,7 +234,7 @@ class DualPeepDicriminator(torch.nn.Module):
         vid_as_b_c_d_h_w_pl_cond = torch.cat((vid_as_b_c_d_h_w, peep_grid), dim=1)
         vid_logits = self.vid_discrim(vid_as_b_c_d_h_w_pl_cond, cond_peep_vid * 0)
 
-        return img_pair_logits, vid_logits
+        return img_pair_logits * 0, vid_logits
 
 #-----------------------------------------------------------------------------
 

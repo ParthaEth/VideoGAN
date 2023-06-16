@@ -151,13 +151,8 @@ def generate_images(
     python gen_samples.py --outdir=output --trunc=0.7 --seeds=0-5 --shapes=True\\
         --network=ffhq-rebalanced-128.pkl
     """
-    if img_type.lower() == 'raw':
-        img_type = 'image_raw'
-    elif img_type.lower() == 'sr_image':
-        img_type = 'image'
-
-    print('Loading networks from "%s"...' % network_pkl)
     device = torch.device('cuda')
+    print('Loading networks from "%s"...' % network_pkl)
     with dnnlib.util.open_url(network_pkl) as f:
         G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
 
@@ -172,9 +167,15 @@ def generate_images(
 
     os.makedirs(outdir, exist_ok=True)
 
+    if img_type.lower() == 'raw':
+        img_type = 'image_raw'
+        identity_grid = get_identity_flow(G.neural_rendering_resolution, device=device, dtype=torch.float32)
+    elif img_type.lower() == 'sr_image':
+        img_type = 'image'
+        identity_grid = get_identity_flow(G.img_resolution, device=device, dtype=torch.float32)
+
     # Generate batch of images.
     b_size = 4
-    identity_grid = get_identity_flow(G.img_resolution, device=device, dtype=torch.float32)
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=30, codec='libx264')
