@@ -182,6 +182,8 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         appearance_volume = []
         prev_frame = None
         for time_id in range(rend_res):
+            # TODO(Partha): Global feature must forst be transformed since otherwise it doesn't agree with the mask
+            #  orientation!
             global_features = self.forward_warp(global_appearance_features, self.lf_gfc_mask[:, :, :, time_id, 2:4])
             # global_features: batch, ch, h, w notice the assumed convention of lf_gfc_mask
             if prev_frame is None:
@@ -293,9 +295,9 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         video_spatial_res = num_coordinates_per_axis // 2
         vide_time_res = num_coordinates_per_axis * 4
         for b_id in range(batch_size):
-            cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2/2,
+            cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2,
                                    video_spatial_res, dtype=datatype, device=device)
-            cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2/2,
+            cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2,
                                    video_spatial_res, dtype=datatype, device=device)
             cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
             grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
