@@ -1,5 +1,6 @@
 import torch
 import matplotlib.pyplot as plt
+from torchvision.utils import flow_to_image
 
 def get_2D_grid(rend_res, dtype, device):
     cod_x = cod_y = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
@@ -10,7 +11,7 @@ def get_2D_grid(rend_res, dtype, device):
 
 
 def forward_warp(feature_frame, grid):
-    return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=True)
+    return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=True, padding_mode='border')
 
 def prepare_feature_volume(planes, grid):
     """Plane: a torch tensor b, 1, 38, h, w"""
@@ -21,7 +22,7 @@ def prepare_feature_volume(planes, grid):
     appearance_volume = []
     prev_frame = None
     for time_id in range(64):
-        global_features = forward_warp(global_appearance_features, grid)
+        global_features = forward_warp(global_appearance_features.permute(0, 1, 3, 2), grid)
         # global_features: batch, ch, h, w notice the assumed convention of lf_gfc_mask
         if prev_frame is None:
             prev_frame = current_frame = global_features
@@ -29,7 +30,12 @@ def prepare_feature_volume(planes, grid):
             fwd_frm = forward_warp(prev_frame.permute(0, 1, 3, 2), grid)
             prev_frame = current_frame = fwd_frm
 
-        plt.imshow(current_frame.permute(0, 2, 3, 1)[0].cpu())
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+        ax1.imshow(current_frame.permute(0, 2, 3, 1)[0].cpu())
+        ax2.imshow(planes.permute(0, 2, 3, 1)[0].cpu())
+        flow = get_2D_grid(grid.shape[1], grid.dtype, grid.device)[None] - grid
+        local_flow = flow_to_image(flow[0].permute(2, 0, 1))
+        ax3.imshow(local_flow.permute(1, 2, 0).cpu())
         plt.show()
         appearance_volume.append(current_frame)
 
@@ -39,4 +45,10 @@ def prepare_feature_volume(planes, grid):
 grid = get_2D_grid(64, torch.float32, 'cuda')
 input = torch.zeros(3, 64, 64, device='cuda')
 input[:, 5:40, 5:20] = 1.0
-prepare_feature_volume(input[None, ...], grid[None, ...] - 0.1)
+input[:, :, [0, -1]] = 0.5
+input[:, [0, -1], :] = 0.5
+input[:, 32, :] = 0.5
+input[:, :, 32] = 0.5
+grid[32:, 32:, 0] -= 0.1
+grid[32:, 32:, 1] -= 0.2
+prepare_feature_volume(input[None, ...], grid[None, ...])

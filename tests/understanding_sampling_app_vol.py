@@ -80,10 +80,10 @@ class FakeRenderer:
             #     random.shuffle(coordinates)
             # print('In render.py. Shuffling the axes')
 
-            sample_coordinates += torch.stack(coordinates, dim=3)
+            sample_coordinates.append(torch.stack(coordinates, dim=3))
 
         # import ipdb; ipdb.set_trace()
-        sample_coordinates = torch.stack(sample_coordinates, dim=0) \
+        sample_coordinates = torch.cat(sample_coordinates, dim=0) \
             .reshape((batch_size, num_coordinates_per_axis * num_coordinates_per_axis, 3))
         # sample_coordinates = sample_coordinates + torch.randn_like(sample_coordinates)/100
         # print(f'coord: {sample_coordinates[0, :2, :]}')
@@ -103,9 +103,9 @@ class FakeRenderer:
         video_spatial_res = num_coordinates_per_axis // 2
         vide_time_res = num_coordinates_per_axis * 4
         for b_id in range(batch_size):
-            cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2 / 4,
+            cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2,
                                    video_spatial_res, dtype=datatype, device=device)
-            cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2 / 4,
+            cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2,
                                    video_spatial_res, dtype=datatype, device=device)
             cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
             grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
@@ -125,7 +125,7 @@ class FakeRenderer:
 if __name__ == '__main__':
     fake_rend = FakeRenderer()
     rendering_options = {'neural_rendering_resolution': 64}
-    time_cod = 0.0
-    peep_cod = [0.375, 0.375]
+    time_cod = 0.5
+    peep_cod = [0., 0.]
     c = torch.tensor([[0, 0, 1, time_cod,] + peep_cod])
     fake_rend.forward(c, rendering_options)

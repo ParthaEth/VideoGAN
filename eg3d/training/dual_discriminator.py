@@ -224,9 +224,15 @@ class DualPeepDicriminator(torch.nn.Module):
         cond_img_pair = c.clone()
         cond_img_pair[:, 4:6] = cond_img_pair[:, 4:6] * 0
         img_pair_logits = self.image_pair_discrim(img, cond_img_pair * 0, update_emas=update_emas, **block_kwargs)
-        # vid_logits = img_pair_logits * 0  # just creating a face differentiable tensor
-        # b_size, c_ch, h, w, t_steps = img['peep_vid'].shape
-        vid_as_b_c_d_h_w = img['peep_vid'].permute(0, 1, 4, 2, 3)[:, :, ::2, :, :]
+
+        # resizing
+        batch_s, c_ch, v_h, v_w, v_t = img['peep_vid'].shape
+        peep_vid = img['peep_vid'].permute(0, 4, 1, 2, 3).resize(batch_s * v_t, c_ch, v_h, v_w)
+        peep_vid = filtered_resizing(peep_vid, size=32, f=self.image_pair_discrim.resample_filter,
+                                     filter_mode='antialiased')
+        peep_vid = peep_vid.resize(batch_s, v_t, c_ch, 32, 32).permute(0, 2, 1, 3, 4)
+
+        vid_as_b_c_d_h_w = peep_vid[:, :, ::2, :, :]
         cond_peep_vid = c.clone()
         cond_peep_vid[:, 0:4] = cond_peep_vid[:, 0:4] * 0
         peep_grid = self.get_grid_batch(cond_peep_vid, vid_as_b_c_d_h_w.shape[-1])  # shape: b, 2, h, w
@@ -236,7 +242,7 @@ class DualPeepDicriminator(torch.nn.Module):
 
         return img_pair_logits * 0, vid_logits
 
-#-----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
 
 @persistence.persistent_class
 class AxisAlignedDiscriminator(torch.nn.Module):

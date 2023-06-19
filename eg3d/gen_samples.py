@@ -231,10 +231,14 @@ def generate_images(
                     high_res_flow[i:i+1],
                     align_corners=True,)
                 # import ipdb; ipdb.set_trace()
+                peep_frame = g_out['peep_vid'][0:1, :, :, :, b_id*b_size + i]
+                peep_frame = torch.nn.functional.interpolate(peep_frame, img_batch.shape[-1])
+                peep_frame = (peep_frame * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
+
                 local_warped_clmp = (local_warped * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
                 # mask 0 implies only local flow used
-                video_frame = make_grid([local_warped_clmp[0], img_batch[i], local_flow[i], global_flow[i], mask[i]], 5,
-                                        pad_value=255)
+                video_frame = make_grid([local_warped_clmp[0], peep_frame[0], img_batch[i], local_flow[i],
+                                         global_flow[i], mask[i]], 6, pad_value=255)
                 video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
 
         video_out.close()
