@@ -9,6 +9,9 @@ from PIL import Image
 import face_recognition
 import cv2
 import numpy as np
+import shutil
+from pathlib import Path
+
 
 
 class FeatureModel(torch.nn.Module):
@@ -102,10 +105,14 @@ def post_process_batch(model_name, batch):
     return batch
 
 
-def run_feature_extraction_and_get_modified_condition(model_name, data_loader_name,
-                                                      condition_file_path=None):
+def run_feature_extraction_and_get_modified_condition(model_name,
+                                                      data_loader_name,
+                                                      condition_file_path=None,
+                                                      dest_data_dir=None):
     feature_model = get_feature_model(model_name=model_name)
     data_loader = get_dataloader(data_loader_name=data_loader_name)
+    if dest_data_dir is not None:
+        Path(dest_data_dir).mkdir(parents=True)
 
     if condition_file_path is not None:
         condition_data = read_json_condition_file(condition_file_path=condition_file_path)
@@ -115,8 +122,12 @@ def run_feature_extraction_and_get_modified_condition(model_name, data_loader_na
         batch = post_process_batch(model_name=model_name, batch=batch)
         feature_out = feature_model(batch)
         if condition_file_path is not None:
-            modify_condition_data(condition_dict=condition_dict, filenames=filenames,
-                                  new_features=feature_out)
+            modify_condition_data(condition_dict=condition_dict,
+                                  filenames=filenames,
+                                  new_features=feature_out,
+                                  src_data_dir=data_loader.dataset.img_dir,
+                                  dest_data_dir=dest_data_dir)
+
     return condition_dict
 
 
@@ -138,7 +149,7 @@ def convert_json_condition_data(condition_data):
     return condition_data_dict
 
 
-def modify_condition_data(condition_dict, filenames, new_features):
+def modify_condition_data(condition_dict, filenames, new_features, src_data_dir, dest_data_dir):
     for idx, filename in enumerate(filenames):
         if filename in condition_dict:
             existing_feature = [0.9827,  0.0000, -0.1852,  0.5000,  0.0000, -1.0000,  0.0000,  0.0000,
@@ -153,9 +164,12 @@ def modify_condition_data(condition_dict, filenames, new_features):
                     processed_new_feature = new_features[idx].tolist()
                 else:
                     raise NotImplementedError(f'feature data type {type(new_features[idx])} cannot be handled!')
+                if len(processed_new_feature) > 0 and dest_data_dir is not None:
+                    shutil.copy(os.path.join(src_data_dir, filename),
+                                os.path.join(dest_data_dir, filename))
             except IndexError as e:
-                import ipdb; ipdb.set_trace()
-
+                print(f'Error {e} in filename {filename}')
+                continue
             extended_feature = existing_feature + processed_new_feature
             condition_dict[filename] = extended_feature
         else:
@@ -169,6 +183,7 @@ def sanity_check_condition_dict():
 condition_dict = run_feature_extraction_and_get_modified_condition(
     model_name='face_recognition_dlib',
     data_loader_name='ffhq_np',
-    condition_file_path='/is/cluster/fast/pghosh/datasets/ffhq/256X256/dataset.json')
+    condition_file_path='/is/cluster/fast/pghosh/datasets/ffhq/256X256/dataset.json',
+    dest_data_dir='/is/cluster/fast/pghosh/datasets/ffhq/256X256_small/')
 write_formatted_json(condition_dict=condition_dict,
                      output_file_path='/is/cluster/fast/pghosh/datasets/ffhq/vgg_features_with_cam.json')
