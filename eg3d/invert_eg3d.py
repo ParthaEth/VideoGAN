@@ -28,6 +28,7 @@ import legacy
 from camera_utils import LookAtPoseSampler, FOV_to_intrinsics, RotateCamInCirclePerPtoZWhileLookingAt
 from torch_utils import misc
 from training.triplane import TriPlaneGenerator
+from training.perceptual_losses import perceptual_losses, loss_utils
 
 
 #----------------------------------------------------------------------------
@@ -172,6 +173,25 @@ def generate_images(
 
     cam2world_pose = LookAtPoseSampler.sample(3.14/2, 3.14/2, torch.tensor([0, 0, 0.2], device=device), radius=2.7, device=device)
 
+    # TODO(Partha): Load image from disk
+    if img_type.lower() == 'raw':
+        image_type = 'image_raw'
+        target_image = torch.randn((1, 3, 64, 64), device=device, dtype=torch.float32)
+    elif img_type.lower() == 'sr_img':
+        target_image = torch.randn((1, 3, 256, 256), device=device, dtype=torch.float32)
+        image_type = 'image'
+
+    # prepare perceptualossfunctions
+    pretrained_perceptual_loss_weights = '/is/cluster/fast/pghosh/GIF_resources/input_files/perceptual_loss_resources' \
+                                         '/resnet50_ft_weight.pkl'
+    id_loss = perceptual_losses.VGGFace2Loss(pretrained_data=pretrained_perceptual_loss_weights)
+    contextual_loss = perceptual_losses.VGGPerceptualLoss(resize=(target_image.shape[2] != 224),
+                                                          vgg_type='vgg16',
+                                                          perceptual=False,
+                                                          contextual=True).to('cuda')
+    l2 = torch.nn.MSELoss()
+    loss_func = loss_utils.WeightedCombinationOfLosses(list_loss_funcs=[contextual_loss, id_loss, l2],
+                                                       list_weights=[0.025, 0.025, 1])
 
     # Generate images.
     circle_radiuous = 0.5
@@ -187,17 +207,8 @@ def generate_images(
         angle_p = -0.2
         # yaw_angles = np.linspace(20/180*np.pi, -20/180*np.pi, 3)
         rot_angles = np.linspace(0, 2*np.pi, 240)[:-1]
-        loss_func = torch.nn.MSELoss()
         mse = torch.nn.MSELoss()
-        # TODO(Partha): Load image from disk
-        if img_type.lower() == 'raw':
-            image_type = 'image_raw'
-            target_image = torch.randn((1, 3, 64, 64), device=device, dtype=torch.float32)
-        elif img_type.lower() == 'sr_img':
-            target_image = torch.randn((1, 3, 256, 256), device=device, dtype=torch.float32)
-            image_type = 'image'
-
-        optim_iter_num = 7
+        optim_iter_num = 100
 
         camera_params = get_camera_params(G, circle_radiuous, 0, fov_deg, device)
         if G.c_dim > 25:
