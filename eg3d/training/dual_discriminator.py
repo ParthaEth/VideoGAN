@@ -196,6 +196,7 @@ class DualPeepDicriminator(torch.nn.Module):
         block_kwargs        = {},       # Arguments for DiscriminatorBlock.
         mapping_kwargs      = {},       # Arguments for MappingNetwork.
         epilogue_kwargs     = {},       # Arguments for DiscriminatorEpilogue.
+        time_steps=32
     ):
         super().__init__()
         self.image_pair_discrim = DualDiscriminator(c_dim, img_resolution, img_channels, architecture,
@@ -204,7 +205,7 @@ class DualPeepDicriminator(torch.nn.Module):
                                                     epilogue_kwargs)
         video_color_channels = 256  # video frame chnannels
         video_resolution = img_resolution//8
-        self.vid_discrim = VideoDiscriminator(seq_length=128, max_edge=32, channels=5, cmap_dim=c_dim)
+        self.vid_discrim = VideoDiscriminator(seq_length=time_steps, max_edge=32, channels=5, cmap_dim=c_dim)
 
     def get_grid_batch(self, cond_peep_vid, video_spatial_res):
         datatype, device = cond_peep_vid.dtype, cond_peep_vid.device
@@ -226,7 +227,7 @@ class DualPeepDicriminator(torch.nn.Module):
         img_pair_logits = self.image_pair_discrim(img, cond_img_pair * 0, update_emas=update_emas, **block_kwargs)
         # vid_logits = img_pair_logits * 0  # just creating a face differentiable tensor
         # b_size, c_ch, h, w, t_steps = img['peep_vid'].shape
-        vid_as_b_c_d_h_w = img['peep_vid'].permute(0, 1, 4, 2, 3)[:, :, ::2, :, :]
+        vid_as_b_c_d_h_w = img['peep_vid'].permute(0, 1, 4, 2, 3)
         cond_peep_vid = c.clone()
         cond_peep_vid[:, 0:4] = cond_peep_vid[:, 0:4] * 0
         peep_grid = self.get_grid_batch(cond_peep_vid, vid_as_b_c_d_h_w.shape[-1])  # shape: b, 2, h, w

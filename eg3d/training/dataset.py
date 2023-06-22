@@ -199,8 +199,10 @@ class VideoFolderDataset(Dataset):
         path,                   # Path to directory or zip.
         resolution      = None, # Ensure specific resolution, None = highest available.
         return_video    = False,
+        time_steps = 32,        # how many time steps of the video to take
         **super_kwargs,         # Additional arguments for the Dataset base class.
     ):
+        self.time_steps = time_steps
         self._path = path
         self._zipfile = None
         self.return_video = return_video
@@ -290,8 +292,9 @@ class VideoFolderDataset(Dataset):
                 self.write_to_cache(fname)
                 vid_vol = self.get_from_cached(fname)
 
+        vid_vol = vid_vol[:, :, :, :self.time_steps]
         _, _, resolution, _ = vid_vol.shape
-        frame_location = np.random.randint(0, resolution, 1)[0]
+        frame_location = np.random.randint(0, self.time_steps, 1)[0]
         if self.return_video:
             if getattr(self, 'fixed_time_frames', True):
                 constant_axis = 't'
@@ -301,12 +304,12 @@ class VideoFolderDataset(Dataset):
                 peep_location = np.random.randint(0, resolution - self.peep_window_crop_size, 2)
             else:
                 peep_location = np.array([0, 0])
-            lbl_cond = self.axis_dict[constant_axis] + [frame_location / resolution, ] + list(
+            lbl_cond = self.axis_dict[constant_axis] + [frame_location / self.time_steps, ] + list(
                 peep_location / resolution)
         else:
             constant_axis = 't'
             peep_location = None
-            lbl_cond = self.axis_dict[constant_axis] + [frame_location / resolution, ] + [0, 0]
+            lbl_cond = self.axis_dict[constant_axis] + [frame_location / self.time_steps, ] + [0, 0]
 
         # import ipdb; ipdb.set_trace()
 

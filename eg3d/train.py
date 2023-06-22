@@ -114,11 +114,11 @@ def launch_training(c, desc, outdir, dry_run):
 
 #----------------------------------------------------------------------------
 
-def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames):
+def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames, time_steps):
     try:
         dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data, use_labels=True,
                                          max_size=None, xflip=False, return_video=return_video, cache_dir=cache_dir,
-                                         fixed_time_frames=fixed_time_frames)
+                                         fixed_time_frames=fixed_time_frames, time_steps=time_steps)
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # Subclass of training.dataset.Dataset.
         dataset_kwargs.resolution = dataset_obj.resolution # Be explicit about resolution.
         dataset_kwargs.use_labels = dataset_obj.has_labels # Be explicit about labels.
@@ -211,6 +211,7 @@ def parse_comma_separated_list(s):
 @click.option('--discrim_type',    help='What type of discriminator to use (DualDiscriminator, AxisAlignedDiscriminator, DualPeepDicriminator) ', metavar='STR', type=str, required=False, default='AxisAlignedDiscriminator')
 @click.option('--fixed_time_frames', help='Take slice of videos always perpendicular to time axis', metavar='BOOL',
               type=bool, default=False, show_default=True)
+@click.option('--time_steps', help='How many frames to work with', metavar='BOOL', type=int, default=32, show_default=True)
 def main(**kwargs):
     """Train a GAN using the techniques described in the paper
     "Alias-Free Generative Adversarial Networks".
@@ -251,7 +252,7 @@ def main(**kwargs):
     # Training set.
     c.training_set_kwargs, dataset_name = init_dataset_kwargs(
         data=opts.data, return_video=opts.return_video, cache_dir=opts.d_set_cache_dir,
-        fixed_time_frames=opts.fixed_time_frames)
+        fixed_time_frames=opts.fixed_time_frames, time_steps=opts.time_steps)
     if opts.cond and not c.training_set_kwargs.use_labels:
         raise click.ClickException('--cond=True requires labels specified in dataset.json')
     c.training_set_kwargs.use_labels = opts.cond
@@ -270,6 +271,7 @@ def main(**kwargs):
     c.G_kwargs.mapping_kwargs.num_layers = opts.map_depth
     c.D_kwargs.block_kwargs.freeze_layers = opts.freezed
     c.D_kwargs.epilogue_kwargs.mbstd_group_size = opts.mbstd_group
+    c.D_kwargs.time_steps = opts.time_steps
     c.loss_kwargs.r1_gamma = opts.gamma
     c.G_opt_kwargs.lr = (0.002 if opts.cfg == 'stylegan2' else 0.0025) if opts.glr is None else opts.glr
     c.D_opt_kwargs.lr = opts.dlr

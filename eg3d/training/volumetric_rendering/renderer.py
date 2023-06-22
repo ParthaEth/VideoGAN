@@ -239,8 +239,8 @@ class AxisAligndProjectionRenderer(BaseRenderer):
 
         assert num_planes == 1, 'right now appearance planes and 3 flow planes are all in channel dim'
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
-        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device)
-        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device)
+        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
+        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
         if self.return_video:  # Remove hack
             # import ipdb; ipdb.set_trace()
             assert(torch.all(-0.01 <= c[:, 3]) and torch.all(c[:, 3] <= 1.01))
@@ -292,7 +292,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
         video_coordinates = []
         video_spatial_res = num_coordinates_per_axis // 2
-        vide_time_res = num_coordinates_per_axis * 4
+        vide_time_res = 32   # TODO(Partha): pass this coordinate
         for b_id in range(batch_size):
             cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2,
                                    video_spatial_res, dtype=datatype, device=device)
