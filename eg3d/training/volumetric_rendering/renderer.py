@@ -211,10 +211,11 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         # sampled_features := batch, ch, 1, 1, n_pt -> squeez -> batch, ch, n_pt
         sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
 
+
         # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),
         # 5 =((w, h), (w, h), mask), # sample_coordinates: (batch, npts, dims (dims := h, w, t))
-        # But to keep consistency with the self.appearance_volume we make it batch, 5, t, h, w
-        flows_and_mask = torch.nn.functional.grid_sample(self.lf_gfc_mask.permute(0, 4, 3, 1, 2), sample_coordinates,
+        # But grid sample assumes sample cods to have depth, with, height ordering so the permutation
+        flows_and_mask = torch.nn.functional.grid_sample(self.lf_gfc_mask.permute(0, 4, 3, 2, 1), sample_coordinates,
                                                          align_corners=True, padding_mode='border').squeeze()
         out = decoder(sampled_features,
                       full_rendering_res=(options['neural_rendering_resolution'],
@@ -273,10 +274,10 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             #     random.shuffle(coordinates)
                 # print('In render.py. Shuffling the axes')
 
-            sample_coordinates.append(torch.stack(coordinates, dim=3))
+            sample_coordinates += torch.stack(coordinates, dim=3)
 
         # import ipdb; ipdb.set_trace()
-        sample_coordinates = torch.cat(sample_coordinates, dim=0)\
+        sample_coordinates = torch.stack(sample_coordinates, dim=0)\
             .reshape((batch_size, num_coordinates_per_axis*num_coordinates_per_axis, 3))
         # sample_coordinates = sample_coordinates + torch.randn_like(sample_coordinates)/100
         # print(f'coord: {sample_coordinates[0, :2, :]}')
@@ -290,7 +291,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         norm_peep_cod = c[:, 4:6] * 2 - 1
         assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
         video_coordinates = []
-        video_spatial_res = num_coordinates_per_axis  # // 2 rendering without aliasing but now peep vid is 64X64
+        video_spatial_res = num_coordinates_per_axis // 2
         vide_time_res = num_coordinates_per_axis * 4
         for b_id in range(batch_size):
             cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2,
@@ -298,7 +299,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2,
                                    video_spatial_res, dtype=datatype, device=device)
             cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
-            grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
+            grid_x, grid_y, grid_z = torch.meshgrid(cod_x * 0.5, cod_y * 0.5, cod_z, indexing='ij')
             coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
             video_coordinates.append(coordinates)
 

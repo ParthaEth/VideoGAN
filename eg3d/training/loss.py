@@ -125,13 +125,13 @@ class StyleGAN2Loss(Loss):
                                          filter_mode=self.filter_mode)
 
         # real video resizing
-        # batch_s, c_ch, v_h, v_w, v_t = peep_vid_real.shape
-        # peep_vid_real = peep_vid_real.permute(0, 4, 1, 2, 3).resize(batch_s * v_t, c_ch, v_h, v_w)
-        # peep_vid_real = filtered_resizing(peep_vid_real, size=neural_rendering_resolution//2, f=self.resample_filter,
-        #                                   filter_mode='antialiased')
-        # peep_vid_real = peep_vid_real\
-        #     .resize(batch_s, v_t, c_ch, neural_rendering_resolution//2, neural_rendering_resolution//2)\
-        #     .permute(0, 2, 3, 4, 1)
+        batch_s, c_ch, v_h, v_w, v_t = peep_vid_real.shape
+        peep_vid_real = peep_vid_real.permute(0, 4, 1, 2, 3).resize(batch_s * v_t, c_ch, v_h, v_w)
+        peep_vid_real = filtered_resizing(peep_vid_real, size=neural_rendering_resolution//2, f=self.resample_filter,
+                                          filter_mode='antialiased')
+        peep_vid_real = peep_vid_real\
+            .resize(batch_s, v_t, c_ch, neural_rendering_resolution//2, neural_rendering_resolution//2)\
+            .permute(0, 2, 3, 4, 1)
 
         if self.blur_raw_target:
             blur_size = np.floor(blur_sigma * 3)
