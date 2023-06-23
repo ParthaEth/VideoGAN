@@ -106,7 +106,7 @@ def create_samples(N=256, voxel_origin=[0, 0, 0], cube_length=2.0):
 
 def get_identity_flow(rend_res, dtype, device):
     cod_x = cod_y = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
-    grid_x, grid_y = torch.meshgrid(cod_x, cod_y, indexing='ij')
+    grid_x, grid_y = torch.meshgrid(cod_x, cod_y, indexing='xy')
     coordinates = torch.stack((grid_x, grid_y), dim=0)
     return coordinates
 
@@ -169,10 +169,10 @@ def generate_images(
 
     if img_type.lower() == 'raw':
         img_type = 'image_raw'
-        identity_grid = get_identity_flow(G.neural_rendering_resolution, device=device, dtype=torch.float32)
+        identity_grid = get_identity_flow(G.neural_rendering_resolution, device=device, dtype=torch.float32) * 0.5
     elif img_type.lower() == 'sr_image':
         img_type = 'image'
-        identity_grid = get_identity_flow(G.img_resolution, device=device, dtype=torch.float32)
+        identity_grid = get_identity_flow(G.img_resolution, device=device, dtype=torch.float32) * 0.5
 
     # Generate batch of images.
     b_size = 4
@@ -218,18 +218,14 @@ def generate_images(
                                                                G.neural_rendering_resolution)
             flows_and_masks = torch.nn.functional.interpolate(flows_and_masks, img_batch.shape[-1])
             # import ipdb; ipdb.set_trace()
-            local_flow = flow_to_image(identity_grid[None] - flows_and_masks[:, 0:2])
-            global_flow = flow_to_image(identity_grid[None] - flows_and_masks[:, 2:4])
+            local_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 0:2]).flip([1,]))
+            global_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 2:4]).flip([1,]))
             mask = (flows_and_masks[:, 4:5] * 127.5 + 127.5).expand(-1, 3, -1, -1).to(torch.uint8)
             # import ipdb; ipdb.set_trace()
 
             high_res_flow = (identity_grid[None] -
-                             (identity_grid[None] - flows_and_masks[:, 0:2])/sup_res_factor).permute(0, 2, 3, 1)
+                             (identity_grid[None] - flows_and_masks[:, 0:2])/sup_res_factor).permute(0, 2, 3, 1) * 2
             for i in range(b_size):
-                local_warped = torch.nn.functional.grid_sample(
-                    local_warped[0:1].permute(0, 1, 3, 2),
-                    high_res_flow[i:i+1],
-                    align_corners=True,)
                 # import ipdb; ipdb.set_trace()
                 # peep_frame = g_out['peep_vid'][0:1, :, :, :, b_id*b_size + i]
                 # peep_frame = torch.nn.functional.interpolate(peep_frame, img_batch.shape[-1])
@@ -242,6 +238,10 @@ def generate_images(
                 video_frame = make_grid([local_warped_clmp[0], img_batch[i], local_flow[i],
                                          global_flow[i], mask[i]], 5, pad_value=255)
                 video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
+                local_warped = torch.nn.functional.grid_sample(
+                    local_warped[0:1],  # .permute(0, 1, 3, 2),
+                    high_res_flow[i:i + 1],
+                    align_corners=True, )
 
         video_out.close()
 
