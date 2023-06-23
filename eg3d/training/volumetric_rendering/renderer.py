@@ -215,7 +215,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),
         # 5 =((w, h), (w, h), mask), # sample_coordinates: (batch, npts, dims (dims := h, w, t))
         # But grid sample assumes sample cods to have depth, with, height ordering so the permutation
-        flows_and_mask = torch.nn.functional.grid_sample(self.lf_gfc_mask.permute(0, 4, 3, 2, 1), sample_coordinates,
+        flows_and_mask = torch.nn.functional.grid_sample(self.lf_gfc_mask.permute(0, 4, 3, 1, 2), sample_coordinates,
                                                          align_corners=True, padding_mode='border').squeeze()
         out = decoder(sampled_features,
                       full_rendering_res=(options['neural_rendering_resolution'],
