@@ -145,15 +145,21 @@ class BaseRenderer(torch.nn.Module):
         lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3)  # lf_gfc_mask is of shape batch, num_pts, planes, pln_chnls
         # lf_gfc_mask is of shape batch, num_pts, planes*pln_chnls
         lf_gfc_mask = lf_gfc_mask.reshape(batch, rend_res, rend_res, rend_res, self.motion_features)
+        # transposing x and y as torch gris type'ij' transposes the input
+        lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3, 4)  # batch, height, width, depth, ch
 
         identity_flow_and_mask = self.get_identity_flow_and_mask((rend_res, rend_res), dtype, device)
         identity_flow_and_mask = identity_flow_and_mask[:, :, :, None, :].expand(batch, -1, -1, rend_res, -1)
         # import ipdb; ipdb.set_trace()
         generated_flow_mask = self.motion_encoder(lf_gfc_mask).clone()
-        generated_flow_mask[:, :, :, :, :4] = \
-            generated_flow_mask[:, :, :, :, :4]/16 + identity_flow_and_mask[:, :, :, :, :4]  # just keeping flow low
-        # making sure mask is between -1 and 1, it will be later normalized
-        # generated_flow_mask[:, :, :, :, 4:] = torch.nn.functional.tanh(generated_flow_mask[:, :, :, :, 4:])
+
+        # small Global flow ensured
+        generated_flow_mask[:, :, :, :, 2:4] = \
+            generated_flow_mask[:, :, :, :, 2:4]/16 + identity_flow_and_mask[:, :, :, :, 2:4]  # just keeping flow low
+        # mask is between -1 and 1, it will be later normalized
+        # small local flow ensured
+        generated_flow_mask[:, :, :, :, :2] = \
+            generated_flow_mask[:, :, :, :, :2] / 16 + identity_flow_and_mask[:, :, :, :, :2]  # just keeping flow low
         return generated_flow_mask  # batch, rend_res, rend_res, rend_res, 5
 
 
