@@ -40,20 +40,18 @@ class TriPlaneGenerator(torch.nn.Module):
         self.img_channels=img_channels
         # self.renderer = ImportanceRenderer()
         self.appearance_features = 32  # 32 appearance features 6 motion features
-        self.motion_features = 36  # must be multiple of 3
-        assert self.motion_features % 3 == 0
-        self.num_planes = 1
-        self.renderer = AxisAligndProjectionRenderer(return_video, self.motion_features)
+        self.num_planes = 3
+        self.renderer = AxisAligndProjectionRenderer(return_video)
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
         self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
-                                          img_channels=self.appearance_features + self.motion_features,
+                                          img_channels=self.appearance_features * self.num_planes,
                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
-        self.decoder = OSGDecoder(self.appearance_features,
+        self.decoder = OSGDecoder(self.appearance_features * self.num_planes,
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
                                    'decoder_output_dim': 32})
 
@@ -111,14 +109,13 @@ class TriPlaneGenerator(torch.nn.Module):
 
         # Reshape output into three 32-channel planes
         b_size = len(planes)
-        planes = planes.view(b_size, self.num_planes, self.appearance_features + self.motion_features,
+        planes = planes.view(b_size, self.num_planes, self.appearance_features,
                              planes.shape[-2], planes.shape[-1])
 
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
         #     self.renderer(planes, self.decoder, ray_origins, ray_directions, self.rendering_kwargs) # channels last
-        rgb_image, peep_video, features, flows_and_masks = self.renderer(planes, self.decoder, c, None,
-                                                                         self.rendering_kwargs)  # channels last
+        rgb_image, peep_video, features, = self.renderer(planes, self.decoder, c, None, self.rendering_kwargs)  # channels last
 
         # Reshape into 'raw' image
         H = W = self.neural_rendering_resolution
@@ -152,7 +149,7 @@ class TriPlaneGenerator(torch.nn.Module):
         # sr_image = rgb_image
         # rgb_image = self.downscale4x(sr_image)
 
-        return {'image': sr_image, 'image_raw': rgb_image, 'peep_vid': peep_video, 'flows_and_masks': flows_and_masks}
+        return {'image': sr_image, 'image_raw': rgb_image, 'peep_vid': peep_video}
     
     def sample(self, coordinates, directions, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False,
                **synthesis_kwargs):

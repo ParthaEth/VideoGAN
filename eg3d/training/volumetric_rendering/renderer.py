@@ -52,13 +52,11 @@ def project_onto_planes(planes, coordinates):
     return projections[..., :2]
 
 
-def sample_from_planes(plane_axes, plane_features, coordinates, mode='bilinear', padding_mode='zeros', box_warp=None):
+def sample_from_planes(plane_axes, plane_features, coordinates, mode='bilinear', padding_mode='zeros'):
     assert padding_mode == 'zeros'
     N, n_planes, C, H, W = plane_features.shape
     _, M, _ = coordinates.shape
     plane_features = plane_features.reshape(N*n_planes, C, H, W)
-
-    # coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
 
     projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
     # import ipdb; ipdb.set_trace()
@@ -83,140 +81,38 @@ def sample_from_3dgrid(grid, coordinates):
     sampled_features = sampled_features.permute(0, 4, 3, 2, 1).reshape(N, H*W*D, C)
     return sampled_features
 
+
 class BaseRenderer(torch.nn.Module):
-    def __init__(self, motion_features):
+    def __init__(self):
         super().__init__()
         # self.plane_axes = torch.nn.Parameter(generate_planes(num_planes))
         self.register_buffer('plane_axes', generate_planes())
-        self.motion_features = motion_features
-
-        self.motion_encoder = torch.nn.Sequential(
-            torch.nn.Linear(motion_features, 64, bias=True),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, 5, bias=True),
-            torch.nn.Tanh()
-        )
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module):
-        if isinstance(module, torch.nn.Linear):
-            torch.nn.init.trunc_normal_(module.weight.data, mean=0, std=0.15, a=-1, b=1)
-            if module.bias is not None:
-                module.bias.data.zero_()
 
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
         raise NotImplementedError()
 
-    def get_3D_grid(self, rend_res, dtype, device):
-        cod_x = cod_y = cod_z = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
-        grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
-        coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
-        return coordinates
-
-    def get_2D_grid(self, rend_res, dtype, device):
-        cod_x = cod_y = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
-        grid_x, grid_y = torch.meshgrid(cod_x, cod_y, indexing='ij')
-        coordinates = torch.stack((grid_x, grid_y), dim=0).permute(1, 2, 0)
-        # coordinates = coordinates.reshape(1, -1, 2).expand(batch, -1, -1)
-        return coordinates
-
-    def get_identity_flow_and_mask(self, flow_and_mask_shape, dtype, device):
-        assert flow_and_mask_shape[0] == flow_and_mask_shape[1]
-        identity_lf = self.get_2D_grid(flow_and_mask_shape[0], dtype, device)[None, ...]
-        identity_gfc = identity_lf
-        identity_mask = torch.ones(flow_and_mask_shape, dtype=dtype, device=device)[None, ..., None] * 0.5
-        identity_lf_gfc_mask = torch.cat((identity_lf, identity_gfc, identity_mask), dim=-1)
-        return identity_lf_gfc_mask
-
-    def get_motion_feature_vol(self, planes, options, bypass_network):
-        """ Planes: batch_size, n_planes, channels, h, w ; n_planes == 3 is assumed later
-            return lf_gfc_mask: batch, rend_res, rend_res, rend_res, 5
-        """
-
-        batch, _, _, _, _ = planes.shape
-        rend_res = options['neural_rendering_resolution']
-        dtype, device = planes.dtype, planes.device
-        coordinates = self.get_3D_grid(rend_res, dtype, device).reshape(1, -1, 3).expand(batch, -1, -1)
-        # import ipdb; ipdb.set_trace()
-        lf_gfc_mask = sample_from_planes(self.plane_axes, planes, coordinates, padding_mode='zeros',
-                                         box_warp=options['box_warp'])
-        # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 3
-        # import ipdb; ipdb.set_trace()
-        lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3)  # lf_gfc_mask is of shape batch, num_pts, planes, pln_chnls
-        # lf_gfc_mask is of shape batch, num_pts, planes*pln_chnls
-        lf_gfc_mask = lf_gfc_mask.reshape(batch, rend_res, rend_res, rend_res, self.motion_features)
-
-        identity_flow_and_mask = self.get_identity_flow_and_mask((rend_res, rend_res), dtype, device)
-        identity_flow_and_mask = identity_flow_and_mask[:, :, :, None, :].expand(batch, -1, -1, rend_res, -1)
-        # import ipdb; ipdb.set_trace()
-        generated_flow_mask = self.motion_encoder(lf_gfc_mask).clone()
-        generated_flow_mask[:, :, :, :, :4] = \
-            generated_flow_mask[:, :, :, :, :4]/16 + identity_flow_and_mask[:, :, :, :, :4]  # just keeping flow low
-        # making sure mask is between -1 and 1, it will be later normalized
-        # generated_flow_mask[:, :, :, :, 4:] = torch.nn.functional.tanh(generated_flow_mask[:, :, :, :, 4:])
-        return generated_flow_mask  # batch, rend_res, rend_res, rend_res, 5
-
 
 class AxisAligndProjectionRenderer(BaseRenderer):
-    def __init__(self, return_video, motion_features):
+    def __init__(self, return_video):
         # self.neural_rendering_resolution = neural_rendering_resolution
         self.return_video = return_video
-        super().__init__(motion_features)
+        super().__init__()
         self.appearance_volume = None
         self.lf_gfc_mask = None
 
     def forward_warp(self, feature_frame, grid):
         return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=True)
 
-    def prepare_feature_volume(self, planes, options, bypass_network=False):
-        """Plane: a torch tensor b, 1, 38, h, w"""
-        rend_res = options['neural_rendering_resolution']
-        # fist self.motion_features are assumed to be motion features
-        batch, _, channels, h, w = planes.shape
-        motion_feature_planes = planes[:, :, :self.motion_features, :, :].reshape(batch, 3, -1, h, w)
-        self.lf_gfc_mask = self.get_motion_feature_vol(motion_feature_planes, options, bypass_network)
-        # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth),
-        # 5 =((w, h), (w, h), mask)
-        global_appearance_features = planes[:, 0, self.motion_features:, :, :]
-
-        appearance_volume = []
-        prev_frame = None
-        for time_id in range(rend_res):
-            global_features = self.forward_warp(global_appearance_features.permute(0, 1, 3, 2),
-                                                self.lf_gfc_mask[:, :, :, time_id, 2:4])
-            # global_features: batch, ch, h, w notice the assumed convention of lf_gfc_mask
-            if prev_frame is None:
-                prev_frame = current_frame = global_features
-            else:
-                # prev_frame must be permuted or else we will be transposing it all the time
-                fwd_frm = self.forward_warp(prev_frame.permute(0, 1, 3, 2), self.lf_gfc_mask[:, :, :, time_id, :2])
-                # import ipdb; ipdb.set_trace()
-                # fwd_frm: batch, ch, h, w notice the assumed convention of lf_gfc_mask
-                mask = (self.lf_gfc_mask[:, :, :, time_id, 4] + 1) / 2
-                prev_frame = current_frame = global_features * mask[:, None, ...] + fwd_frm * (1 - mask[:, None, ...])
-
-            appearance_volume.append(current_frame)
-
-        appearance_volume = torch.stack(appearance_volume, dim=0)  # shape: t, batch, app_feat, h, w
-        self.appearance_volume = appearance_volume.permute(1, 2, 0, 3, 4)  # shape: batch, app_feat, t, h, w
-
-    def get_rgb_given_coordinate(self, decoder, sample_coordinates, options, bypass_network=False):
+    def get_rgb_given_coordinate(self, planes, decoder, sample_coordinates, options, bypass_network=False):
         batch, n_pt, dims = sample_coordinates.shape
         assert dims == 3
-        sample_coordinates = sample_coordinates.reshape(batch, 1, 1, n_pt, dims)  # dims := (h, w, t)
-        # self.appearance_volume: batch, app_feat, t, h, w
-        # Sample cods are flipping h and w in the following grid sample. swap appearnace feature h, w dims?
-        sampled_features = torch.nn.functional.grid_sample(self.appearance_volume, sample_coordinates,
-                                                           align_corners=True, padding_mode='border').squeeze()
-        # sampled_features := batch, ch, 1, 1, n_pt -> squeez -> batch, ch, n_pt
-        sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
 
+        sampled_features = sample_from_planes(self.plane_axes, planes, sample_coordinates, padding_mode='zeros')
 
-        # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),
-        # 5 =((w, h), (w, h), mask), # sample_coordinates: (batch, npts, dims (dims := h, w, t))
-        # But grid sample assumes sample cods to have depth, with, height ordering so the permutation
-        flows_and_mask = torch.nn.functional.grid_sample(self.lf_gfc_mask.permute(0, 4, 3, 1, 2), sample_coordinates,
-                                                         align_corners=True, padding_mode='border').squeeze()
+        # sampled_features is of shape batch, planes, num_pts, pln_chnls; with planes == 3
+        sampled_features = sampled_features.permute(0, 2, 1, 3)  # batch, num_pts, planes, pln_ch
+        sampled_features = sampled_features.reshape(batch, n_pt, -1)  # batch, num_pts, planes * pln_ch
+
         out = decoder(sampled_features,
                       full_rendering_res=(options['neural_rendering_resolution'],
                                           options['neural_rendering_resolution'],
@@ -224,7 +120,6 @@ class AxisAligndProjectionRenderer(BaseRenderer):
                       bypass_network=bypass_network)
         if options.get('density_noise', 0) > 0:
             raise NotImplementedError('This feature has been removed')
-        out['flows_and_mask'] = flows_and_mask
         return out
 
     def forward(self, planes, decoder, c, ray_directions, rendering_options):
@@ -232,15 +127,12 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         # assert ray_directions is None   # This will be ignored silently
         device = planes.device
         datatype = planes.dtype
-        # self.plane_axes = self.plane_axes.to(device)
-        self.prepare_feature_volume(planes, rendering_options, bypass_network=False)
 
         batch_size, num_planes, planes_ch, _, _ = planes.shape
 
-        assert num_planes == 1, 'right now appearance planes and 3 flow planes are all in channel dim'
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
-        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
-        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
+        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device)
+        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device)
         if self.return_video:  # Remove hack
             # import ipdb; ipdb.set_trace()
             assert(torch.all(-0.01 <= c[:, 3]) and torch.all(c[:, 3] <= 1.01))
@@ -284,14 +176,15 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         # sample_directions = sample_coordinates
 
         rendering_options['time_steps'] = 1
-        out = self.get_rgb_given_coordinate(decoder, sample_coordinates, rendering_options)
-        colors_coarse, features, flows_and_mask = out['rgb'], out['features'], out['flows_and_mask']
+        out = self.get_rgb_given_coordinate(planes, decoder, sample_coordinates, rendering_options)
+        colors_coarse, features = out['rgb'], out['features']
 
         # render peep video
         norm_peep_cod = c[:, 4:6] * 2 - 1
         assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
         video_coordinates = []
-        video_spatial_res = num_coordinates_per_axis // 2
+        # video_spatial_res = num_coordinates_per_axis // 2
+        video_spatial_res = 32
         vide_time_res = 32   # TODO(Partha): pass this coordinate
         for b_id in range(batch_size):
             cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2,
@@ -299,7 +192,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2,
                                    video_spatial_res, dtype=datatype, device=device)
             cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
-            grid_x, grid_y, grid_z = torch.meshgrid(cod_x * 0.5, cod_y * 0.5, cod_z, indexing='ij')
+            grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
             coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
             video_coordinates.append(coordinates)
 
@@ -307,8 +200,8 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         video_coordinates = torch.stack(video_coordinates, dim=0).reshape(batch_size, -1, 3)
         rendering_options['neural_rendering_resolution'] = video_spatial_res
         rendering_options['time_steps'] = vide_time_res
-        out = self.get_rgb_given_coordinate(decoder, video_coordinates, rendering_options)
+        out = self.get_rgb_given_coordinate(planes, decoder, video_coordinates, rendering_options)
         peep_vid = out['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
             .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
 
-        return colors_coarse, peep_vid, features, flows_and_mask
+        return colors_coarse, peep_vid, features
