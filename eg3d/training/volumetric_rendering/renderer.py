@@ -157,9 +157,9 @@ class BaseRenderer(torch.nn.Module):
         generated_flow_mask[:, :, :, :, 2:4] = \
             generated_flow_mask[:, :, :, :, 2:4]/16 + identity_flow_and_mask[:, :, :, :, 2:4]  # just keeping flow low
         # mask is between -1 and 1, it will be later normalized
-        # small local flow ensured
+        # small-er local flow ensured
         generated_flow_mask[:, :, :, :, :2] = \
-            generated_flow_mask[:, :, :, :, :2] / 16 + identity_flow_and_mask[:, :, :, :, :2]  # just keeping flow low
+            generated_flow_mask[:, :, :, :, :2] / 64 + identity_flow_and_mask[:, :, :, :, :2]  # just keeping flow low
         return generated_flow_mask  # batch, rend_res, rend_res, rend_res, 5
 
 
