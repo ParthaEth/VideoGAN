@@ -45,9 +45,12 @@ class TriPlaneGenerator(torch.nn.Module):
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
-        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
-                                          img_channels=self.appearance_features * self.num_planes,
-                                          mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
+        self.backbone_1 = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
+                                            img_channels=self.appearance_features * self.num_planes,
+                                            mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
+        self.backbone_2 = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
+                                            img_channels=self.appearance_features * self.num_planes,
+                                            mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
@@ -78,8 +81,13 @@ class TriPlaneGenerator(torch.nn.Module):
             cond = c.clone()
             # cond[:, :4] *= 0
         # import ipdb; ipdb.set_trace()
-        return self.backbone.mapping(z, cond * self.rendering_kwargs.get('c_scale', 0), truncation_psi=truncation_psi,
-                                     truncation_cutoff=truncation_cutoff, update_emas=update_emas)
+        map_1 = self.backbone_1.mapping(z, cond * self.rendering_kwargs.get('c_scale', 0),
+                                        truncation_psi=truncation_psi,
+                                        truncation_cutoff=truncation_cutoff, update_emas=update_emas)
+        map_2 = self.backbone_1.mapping(z, cond * self.rendering_kwargs.get('c_scale', 0),
+                                        truncation_psi=truncation_psi,
+                                        truncation_cutoff=truncation_cutoff, update_emas=update_emas)
+        return map_1 + map_2
 
     def synthesis(self, ws, c, neural_rendering_resolution=None, update_emas=False, cache_backbone=False,
                   use_cached_backbone=False, **synthesis_kwargs):
@@ -100,7 +108,9 @@ class TriPlaneGenerator(torch.nn.Module):
         if use_cached_backbone and self._last_planes is not None:
             planes = self._last_planes
         else:
-            planes = self.backbone.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
+            planes_1 = self.backbone_1.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
+            planes_2 = self.backbone_2.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
+            planes = planes_1 + planes_2
         if cache_backbone:
             self._last_planes = planes
 

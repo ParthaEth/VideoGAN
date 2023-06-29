@@ -184,7 +184,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
         video_coordinates = []
         # video_spatial_res = num_coordinates_per_axis // 2
-        video_spatial_res = 32
+        video_spatial_res = 64
         vide_time_res = 32   # TODO(Partha): pass this coordinate
         for b_id in range(batch_size):
             cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2,
