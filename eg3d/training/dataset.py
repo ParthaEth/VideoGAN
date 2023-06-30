@@ -228,18 +228,21 @@ class ImageFolderDataset(Dataset):
         return image[:3]  # forcing 3 channel images
 
     def _load_raw_labels(self):
-        fname = 'dataset.json'
-        if fname not in self._all_fnames:
-            return None
-        with self._open_file(fname) as f:
-            labels = json.load(f)['labels']
-        if labels is None:
-            return None
-        labels = dict(labels)
-        labels = [labels[fname.replace('\\', '/')] for fname in self._image_fnames]
-        labels = np.array(labels)
-        # import ipdb; ipdb.set_trace()
-        labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])
+        # fname = 'dataset.json'
+        # if fname not in self._all_fnames:
+        #     return None
+        # with self._open_file(fname) as f:
+        #     labels = json.load(f)['labels']
+        # if labels is None:
+        #     return None
+        # labels = dict(labels)
+        # labels = [labels[fname.replace('\\', '/')] for fname in self._image_fnames]
+        # labels = np.array(labels)
+        # # import ipdb; ipdb.set_trace()
+        # labels = labels.astype({1: np.int64, 2: np.float32}[labels.ndim])
+        labels = [[0.9827, 0.0, -0.1852, 0.5, 0.0, -1.0, 0.0, 0.0, -0.1852, 0.0, -0.9827, 2.6533, 0.0, 0.0, 0.0, 1.0,
+                  4.2634, 0.0, 0.5, 0.0, 4.2634, 0.5, 0.0, 0.0, 1.0, ],]
+        labels = np.array(labels, dtype=np.float32).repeat(len(self._image_fnames), axis=0)
         return labels
 
 #----------------------------------------------------------------------------
