@@ -17,7 +17,7 @@ from collections import OrderedDict
 import cv2
 
 
-def image_align_68(src_file, dst_file, face_landmarks, output_size=256, transform_size=1024, enable_padding=True):
+def image_align_68(src_file, dst_file, face_landmarks, output_size=256, transform_size=1024, return_cropped=False):
     # Align function from FFHQ dataset pre-processing step
     # https://github.com/NVlabs/ffhq-dataset/blob/master/download_ffhq.py
 
@@ -52,10 +52,13 @@ def image_align_68(src_file, dst_file, face_landmarks, output_size=256, transfor
     qsize = np.hypot(*x) * 2
 
     # Load in-the-wild image.
-    if not os.path.isfile(src_file):
-        print('\nCannot find source image. Please run "--wilds" before "--align".')
-        return
-    img = PIL.Image.open(src_file)
+    if os.path.isfile(src_file):
+        img = PIL.Image.open(src_file)
+    if isinstance(src_file, np.ndarray):
+        img = PIL.Image.fromarray(src_file)
+    if isinstance(src_file, imageio.core.util.Array):
+        img = PIL.Image.fromarray(src_file)
+
     orig_imag_size = img.size
 
     # Shrink.
@@ -101,6 +104,9 @@ def image_align_68(src_file, dst_file, face_landmarks, output_size=256, transfor
     if output_size < transform_size:
         img = img.resize((output_size, output_size), PIL.Image.ANTIALIAS)
 
+    if return_cropped:
+        return img
+
     # Save aligned image.
     dst_file_img = dst_file.split('/')
     temp = [dst_file_img[-1],]
@@ -127,7 +133,6 @@ def reverse_transform(src_file, dst_file, source_overlay_file, original_transfor
     # # resize
     # if img.size[0] != transforms['transform_size'][0]:
     #     img = img.resize((transforms['transform_size'][0], transforms['transform_size'][0]), PIL.Image.ANTIALIAS)
-
 
     if source_overlay_file is None:
         dst_img = PIL.Image.new('RGB', tuple(transforms['orig_imag_size']))
@@ -351,6 +356,8 @@ def get_my_file_list(pid, tot_ps, src_dir):
 
 if __name__ == '__main__':
     import tqdm
+    import imageio
+    from filterpy.kalman import KalmanFilter
     parser = argparse.ArgumentParser(
         description='A simple script to extract eye and mouth coordinates from a face image.')
     parser.add_argument('-s', '--src', default='/home/pghosh/repos/FaceSwap/Global_Flow_Local_Attention/dataset'
@@ -369,7 +376,8 @@ if __name__ == '__main__':
                         help='size of aligned transform (default: 256)')
     parser.add_argument('-a', '--align', default='False', type=lambda x: (str(x).lower() == 'true'),
                         help='Align or dealign')
-    parser.add_argument('--no_padding', action='store_false', help='no padding')
+    parser.add_argument('-pv', '--process_video', default='False', type=lambda x: (str(x).lower() == 'true'),
+                        help='processing videos or images')
     parser.add_argument('-pid', '--process_id', type=int, help='Process id of this job')
     parser.add_argument('-tp', '--total_processes', type=int, help='These many processes are processing at the same '
                                                                    'time on the src dir')
@@ -381,29 +389,62 @@ if __name__ == '__main__':
         os.mkdir(args.dst)
 
     if args.align:
-        for img_name in tqdm.tqdm(get_my_file_list(args.process_id, args.total_processes, args.src)):
-            raw_img_path = os.path.join(args.src, img_name)
-            # import ipdb; ipdb.set_trace()
-            landmarks_detector = face_alignment.FaceAlignment(face_alignment.LandmarksType.THREE_D, flip_input=False)
+        landmarks_detector = face_alignment.FaceAlignment(face_alignment.LandmarksType.THREE_D, flip_input=False)
+        if not args.process_video:
             os.makedirs(os.path.join(args.dst, 'aligned_images'), exist_ok=True)
             os.makedirs(os.path.join(args.dst, 'alignment_attribs'), exist_ok=True)
+
+        for file_name in tqdm.tqdm(get_my_file_list(args.process_id, args.total_processes, args.src)):
+            if args.process_video:
+                raw_imges = imageio.get_reader(os.path.join(args.src, file_name))
+                video_out = imageio.get_writer(os.path.join(args.dst, file_name), mode='I', fps=30, codec='libx264')
+                filter = KalmanFilter (dim_x=int(68*3), dim_z=int(68*3))
+                filter.F = np.eye(int(68*3))  # forward propagation
+                filter.H = np.eye(int(68*3))  # measurement matrix that converts state to measurements
+                filter.P *= 5.0  # state uncertainty
+                filter.R = np.eye(int(68*3)) * 5.0  # measurement uncertainty
+            else:
+                raw_imges = [os.path.join(args.src, file_name), ]
+            # import ipdb; ipdb.set_trace()
             try:
-                for i, face_landmarks in enumerate(landmarks_detector.get_landmarks(raw_img_path), start=1):
-                    aligned_face_path = os.path.join(args.dst, f'align-{img_name}')
-                    image_align_68(raw_img_path, aligned_face_path, face_landmarks, args.output_size, args.transform_size,
-                                   args.no_padding)
+                for i, raw_img in enumerate(raw_imges):
+                    for _, face_landmarks in enumerate(landmarks_detector.get_landmarks(raw_img), start=1):
+                        if args.process_video:
+                            if i == 0:
+                                land_mark_shape = face_landmarks.shape
+                                filter.x = face_landmarks.flatten()
+                            else:
+                                filter.predict()
+                                filter.update(face_landmarks.flatten())
+                            face_landmarks = filter.x.copy()
+                            face_landmarks.resize(land_mark_shape)
+                        aligned_face_path = os.path.join(args.dst, f'align-{file_name}')
+                        img = image_align_68(raw_img, aligned_face_path, face_landmarks, args.output_size,
+                                             args.transform_size, args.process_video)
+                        if args.process_video:
+                            break
+                    video_out.append_data(np.array(img))
             except TypeError as e:
-                print(f'{e}: skipping file {raw_img_path}')
+                video_out.close()
+                if args.process_video:
+                    # Remove output video as we cn't process this frame
+                    try:
+                        os.remove(os.path.join(args.dst, file_name))
+                    except FileNotFoundError:
+                        pass
+                    print(f'{e}: skipping file {raw_img}')
+                    continue
+            video_out.close()
     else:
         aligned_img_path = os.path.join(args.src, 'aligned_inverted_images')
-        for img_name in tqdm.tqdm(get_my_file_list(args.process_id, args.total_processes, aligned_img_path)):
-            raw_img_path = os.path.join(aligned_img_path, img_name)
-            dst_file = os.path.join(args.dst, f'dalign-{img_name}')
+        for file_name in tqdm.tqdm(get_my_file_list(args.process_id, args.total_processes, aligned_img_path)):
+            raw_img = os.path.join(aligned_img_path, file_name)
+            dst_file = os.path.join(args.dst, f'dalign-{file_name}')
             # import ipdb; ipdb.set_trace()
 
-            original_transform_file = os.path.join(args.src, 'alignment_attribs', img_name[:-3] + 'npz')
+            original_transform_file = os.path.join(args.src, 'alignment_attribs', file_name[:-3] + 'npz')
 
             # overlay_file = None
-            overlay_file = os.path.join(args.overlay_dir, img_name[6:])
-            reverse_transform(raw_img_path, dst_file, overlay_file, original_transform_file)
+            overlay_file = os.path.join(args.overlay_dir, file_name[6:])
+            reverse_transform(raw_img, dst_file, overlay_file, original_transform_file)
 

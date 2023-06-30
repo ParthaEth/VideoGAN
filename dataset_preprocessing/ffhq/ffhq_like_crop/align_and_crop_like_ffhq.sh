@@ -1,2 +1,2 @@
 #!/bin/bash
-/home/pghosh/miniconda3/envs/VideoGan80GB/bin/python align_and_crop_faces_like_FFHQ.py --src '/is/cluster/fast/pghosh/datasets/celebV_HQ/frames' --dst '/is/cluster/fast/pghosh/datasets/celebV_HQ/frames_cropped_like_ffhq/' --align True --process_id $1 --total_processes 200
+/home/pghosh/miniconda3/envs/VideoGan80GB/bin/python align_and_crop_faces_like_FFHQ.py --src '/is/cluster/fast/pghosh/datasets/celebV_HQ/256X256X256' --dst '/is/cluster/fast/pghosh/datasets/celebV_HQ/256X256X256_aligned' --align True --process_id $1 --total_processes 400 --process_video True
