@@ -134,7 +134,7 @@ def generate_images(
 
     \b
     # Generate an image using pre-trained FFHQ model.
-    python gen_samples.py --outdir=output --trunc=0.7 --seeds=0-5 --shapes=True\\
+    python gen_samples.sh.py --outdir=output --trunc=0.7 --seeds=0-5 --shapes=True\\
         --network=ffhq-rebalanced-128.pkl
     """
 
@@ -158,13 +158,13 @@ def generate_images(
     intrinsics = FOV_to_intrinsics(fov_deg, device=device)
 
     # Generate images.
-    circle_radiuous = 0.5
+    circle_radiuous = 0.2
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
         out_dir_this_seed = os.path.join(outdir, f'seed{seed:04d}')
         # os.makedirs(out_dir_this_seed, exist_ok=True)
-        video_out = imageio.get_writer(os.path.join(outdir, f'{seed:04d}_rgb.mp4'),
+        video_out = imageio.get_writer(os.path.join(outdir, f'{seed:05d}_rgb.mp4'),
                                        mode='I', fps=60, codec='libx264')
 
         # imgs = []
@@ -193,7 +193,9 @@ def generate_images(
 
             img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
             # PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(os.path.join(out_dir_this_seed,f'{i:04d}_rgb.png'))
-            video_out.append_data(img[0].cpu().numpy())
+            img_resized = PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').resize((256, 256))
+            # video_out.append_data(img[0].cpu().numpy())
+            video_out.append_data(np.array(img_resized))
 
             # img_depth = (img_depth.repeat(3, 1, 1).permute(1, 2, 0) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
             # PIL.Image.fromarray(img_depth.cpu().numpy(), 'RGB').save(os.path.join(out_dir_this_seed, f'{i:04d}_depth.png'))

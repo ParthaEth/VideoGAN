@@ -151,7 +151,7 @@ def generate_images(
 
     \b
     # Generate an image using pre-trained FFHQ model.
-    python gen_samples.py --outdir=output --trunc=0.7 --seeds=0-5 --shapes=True\\
+    python gen_samples.sh.py --outdir=output --trunc=0.7 --seeds=0-5 --shapes=True\\
         --network=ffhq-rebalanced-128.pkl
     """
 
