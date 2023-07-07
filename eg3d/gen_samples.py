@@ -158,7 +158,7 @@ def generate_images(
     intrinsics = FOV_to_intrinsics(fov_deg, device=device)
 
     # Generate images.
-    circle_radiuous = 0.2
+    circle_radiuous = 0.5
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
