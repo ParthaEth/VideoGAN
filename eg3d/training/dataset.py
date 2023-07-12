@@ -292,7 +292,7 @@ class VideoFolderDataset(Dataset):
                 self.write_to_cache(fname)
                 vid_vol = self.get_from_cached(fname)
 
-        vid_vol = vid_vol[:, :, :, :self.time_steps]
+        vid_vol = vid_vol[:, :, :, ::5][:, :, :, :self.time_steps]
         _, _, resolution, _ = vid_vol.shape
         frame_location = np.random.randint(0, self.time_steps, 1)[0]
         if self.return_video:
