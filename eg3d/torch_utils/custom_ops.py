@@ -120,6 +120,7 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
             source_digest = hash_md5.hexdigest()
             build_top_dir = torch.utils.cpp_extension._get_build_directory(module_name, verbose=verbose_build) # pylint: disable=protected-access
             cached_build_dir = os.path.join(build_top_dir, f'{source_digest}-{_get_mangled_gpu_name()}')
+            # cached_build_dir = '/lustre/home/pghosh/.cache/torch_extensions/py39_cu111/bias_act_plugin/'
 
             if not os.path.isdir(cached_build_dir):
                 tmpdir = f'{build_top_dir}/srctmp-{uuid.uuid4().hex}'

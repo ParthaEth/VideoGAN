@@ -32,6 +32,7 @@ from camera_utils import LookAtPoseSampler
 from training.crosssection_utils import sample_cross_section
 from PIL import ImageDraw
 import imageio
+import dill
 
 #----------------------------------------------------------------------------
 
@@ -467,18 +468,17 @@ def training_loop(
         snapshot_pkl = None
         snapshot_data = None
         if (network_snapshot_ticks is not None) and (done or cur_tick % network_snapshot_ticks == 0):
-            snapshot_data = dict(training_set_kwargs=dict(training_set_kwargs))
-            for name, module in [('G', G), ('D', discriminator), ('G_ema', G_ema), ('augment_pipe', augment_pipe)]:
-                if module is not None:
-                    if num_gpus > 1:
-                        misc.check_ddp_consistency(module, ignore_regex=r'.*\.[^.]+_(avg|ema)')
-                    module = copy.deepcopy(module).eval().requires_grad_(False).cpu()
-                snapshot_data[name] = module
-                del module # conserve memory
-            snapshot_pkl = os.path.join(run_dir, f'network-snapshot-{cur_nimg//1000:06d}.pkl')
+            snapshot_data = dict(G=G, D=discriminator, G_ema=G_ema, augment_pipe=augment_pipe,
+                                 training_set_kwargs=dict(training_set_kwargs))
+            for key, value in snapshot_data.items():
+                if isinstance(value, torch.nn.Module):
+                    snapshot_data[key] = value  # .cpu()
+                del value  # conserve memory
+
+            snapshot_pkl = os.path.join(run_dir, f'network-snapshot-{cur_nimg // 1000:06d}.pkl')
             if rank == 0:
                 with open(snapshot_pkl, 'wb') as f:
-                    pickle.dump(snapshot_data, f)
+                    dill.dump(snapshot_data, f)
 
         # Evaluate metrics.
         if (snapshot_data is not None) and (len(metrics) > 0):

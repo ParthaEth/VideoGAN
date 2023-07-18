@@ -17,6 +17,9 @@ from torch_utils import persistence
 from torch_utils.ops import upfirdn2d
 from training.networks_stylegan2 import DiscriminatorBlock, MappingNetwork, DiscriminatorEpilogue
 from training.video_discriminator import VideoDiscriminator
+from training.pg_modules.discriminator import ProjectedDiscriminator
+import dnnlib
+
 
 @persistence.persistent_class
 class SingleDiscriminator(torch.nn.Module):
@@ -159,9 +162,6 @@ class DualDiscriminator(torch.nn.Module):
         # cond[:, 0] = c[:, 0] - 1
         # print(c)
         # assert torch.all(c[:, 0] > 0.95) and torch.all(c[:, 0] < 1.05)
-        image_raw = filtered_resizing(img['image_raw'], size=img['image'].shape[-1], f=self.resample_filter)
-        img = torch.cat([img['image'], image_raw], 1)
-
         _ = update_emas # unused
         x = None
         for res in self.block_resolutions:
@@ -180,7 +180,7 @@ class DualDiscriminator(torch.nn.Module):
 
 #------------------------------------------------------------------------------
 
-@persistence.persistent_class
+
 class DualPeepDicriminator(torch.nn.Module):
     def __init__(self,
         c_dim,                          # Conditioning label (C) dimensionality.
@@ -199,13 +199,19 @@ class DualPeepDicriminator(torch.nn.Module):
         time_steps=32
     ):
         super().__init__()
-        self.image_pair_discrim = DualDiscriminator(c_dim, img_resolution, img_channels, architecture,
-                                                    channel_base, channel_max, num_fp16_res, conv_clamp,
-                                                    cmap_dim, disc_c_noise, block_kwargs, mapping_kwargs,
-                                                    epilogue_kwargs)
+        # self.image_pair_discrim = DualDiscriminator(c_dim, img_resolution, img_channels, architecture,
+        #                                             channel_base, channel_max, num_fp16_res, conv_clamp,
+        #                                             cmap_dim, disc_c_noise, block_kwargs, mapping_kwargs,
+        #                                             epilogue_kwargs)
+        self.image_pair_discrim = ProjectedDiscriminator(
+            backbones=['deit_base_distilled_patch16_224', 'tf_efficientnet_lite0'],
+            # backbones=['tf_efficientnet_lite0'],
+            diffaug=True, interp224=False,
+            backbone_kwargs=dnnlib.EasyDict(),)
         video_color_channels = 256  # video frame chnannels
         video_resolution = img_resolution//8
         self.vid_discrim = VideoDiscriminator(seq_length=time_steps, max_edge=32, channels=5, cmap_dim=c_dim)
+        self.register_buffer('resample_filter', upfirdn2d.setup_filter([1, 3, 3, 1]))
 
     def get_grid_batch(self, cond_peep_vid, video_spatial_res):
         datatype, device = cond_peep_vid.dtype, cond_peep_vid.device
@@ -224,7 +230,9 @@ class DualPeepDicriminator(torch.nn.Module):
     def forward(self, img, c, update_emas=False, **block_kwargs):
         cond_img_pair = c.clone()
         cond_img_pair[:, 4:6] = cond_img_pair[:, 4:6] * 0
-        img_pair_logits = self.image_pair_discrim(img, cond_img_pair * 0, update_emas=update_emas, **block_kwargs)
+        image_raw = filtered_resizing(img['image_raw'], size=img['image'].shape[-1], f=self.resample_filter)
+        img_pair = torch.cat([img['image'], image_raw], 1)
+        img_pair_logits = self.image_pair_discrim(img_pair, cond_img_pair * 0, update_emas=update_emas, **block_kwargs)
         # vid_logits = img_pair_logits * 0  # just creating a face differentiable tensor
         # b_size, c_ch, h, w, t_steps = img['peep_vid'].shape
         vid_as_b_c_d_h_w = img['peep_vid'].permute(0, 1, 4, 2, 3)
@@ -235,6 +243,7 @@ class DualPeepDicriminator(torch.nn.Module):
         vid_as_b_c_d_h_w_pl_cond = torch.cat((vid_as_b_c_d_h_w, peep_grid), dim=1)
         vid_logits = self.vid_discrim(vid_as_b_c_d_h_w_pl_cond, cond_peep_vid * 0)
 
+        # import ipdb; ipdb.set_trace()
         return img_pair_logits, vid_logits
 
 #----------------------------------------------------------------------------
