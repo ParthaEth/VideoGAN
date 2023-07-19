@@ -13,6 +13,7 @@ import torchvision.transforms
 
 from torch_utils import persistence
 from training.networks_stylegan2 import Generator as StyleGAN2Backbone
+from training.networks_stylegan_xl import Generator as StyleGANXLBackbone
 from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
 # from training.volumetric_rendering.ray_sampler import RaySampler
 import dnnlib
@@ -47,9 +48,12 @@ class TriPlaneGenerator(torch.nn.Module):
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
-        self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
-                                          img_channels=self.appearance_features + self.motion_features,
-                                          mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
+        # self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
+        #                                   img_channels=self.appearance_features + self.motion_features,
+        #                                   mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
+        self.backbone = StyleGANXLBackbone(z_dim, c_dim, w_dim, img_resolution=256,
+                                           img_channels=self.appearance_features + self.motion_features,
+                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
