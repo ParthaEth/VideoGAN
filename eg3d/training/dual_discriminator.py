@@ -153,7 +153,7 @@ class DualDiscriminator(torch.nn.Module):
         self.register_buffer('resample_filter', upfirdn2d.setup_filter([1,3,3,1]))
         self.disc_c_noise = disc_c_noise
 
-    def forward(self, img, c, update_emas=False, **block_kwargs):
+    def forward(self, img, c, update_emas=False, curr_nimg_ratio=1, **block_kwargs):
         image_raw = filtered_resizing(img['image_raw'], size=img['image'].shape[-1], f=self.resample_filter)
         img = torch.cat([img['image'], image_raw], 1)
 
@@ -165,7 +165,11 @@ class DualDiscriminator(torch.nn.Module):
 
         cmap = None
         if self.c_dim > 0:
-            if self.disc_c_noise > 0: c += torch.randn_like(c) * c.std(0) * self.disc_c_noise
+            if self.disc_c_noise > 0:
+                noise_factor = (1 - 2 * curr_nimg_ratio)
+                if noise_factor < 0:
+                    noise_factor = 0
+                c += torch.randn_like(c) * c.std(0) * self.disc_c_noise * noise_factor
             cmap = self.mapping(None, c)
         x = self.b4(x, img, cmap)
         return x

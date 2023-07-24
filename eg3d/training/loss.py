@@ -26,7 +26,11 @@ class Loss:
 #----------------------------------------------------------------------------
 
 class StyleGAN2Loss(Loss):
-    def __init__(self, device, G, D, augment_pipe=None, r1_gamma=10, style_mixing_prob=0, pl_weight=0, pl_batch_shrink=2, pl_decay=0.01, pl_no_weight_grad=False, blur_init_sigma=0, blur_fade_kimg=0, r1_gamma_init=0, r1_gamma_fade_kimg=0, neural_rendering_resolution_initial=64, neural_rendering_resolution_final=None, neural_rendering_resolution_fade_kimg=0, gpc_reg_fade_kimg=1000, gpc_reg_prob=None, dual_discrimination=False, filter_mode='antialiased'):
+    def __init__(self, device, G, D, total_kimg, augment_pipe=None, r1_gamma=10, style_mixing_prob=0, pl_weight=0,
+                 pl_batch_shrink=2, pl_decay=0.01, pl_no_weight_grad=False, blur_init_sigma=0, blur_fade_kimg=0,
+                 r1_gamma_init=0, r1_gamma_fade_kimg=0, neural_rendering_resolution_initial=64,
+                 neural_rendering_resolution_final=None, neural_rendering_resolution_fade_kimg=0,
+                 gpc_reg_fade_kimg=1000, gpc_reg_prob=None, dual_discrimination=False, filter_mode='antialiased'):
         super().__init__()
         self.device             = device
         self.G                  = G
@@ -52,6 +56,7 @@ class StyleGAN2Loss(Loss):
         self.filter_mode = filter_mode
         self.resample_filter = upfirdn2d.setup_filter([1,3,3,1], device=device)
         self.blur_raw_target = True
+        self.total_kimg = total_kimg
         assert self.gpc_reg_prob is None or (0 <= self.gpc_reg_prob <= 1)
 
     def run_G(self, z, c, swapping_prob, neural_rendering_resolution, update_emas=False):
@@ -70,7 +75,7 @@ class StyleGAN2Loss(Loss):
         gen_output = self.G.synthesis(ws, c, neural_rendering_resolution=neural_rendering_resolution, update_emas=update_emas)
         return gen_output, ws
 
-    def run_D(self, img, c, blur_sigma=0, blur_sigma_raw=0, update_emas=False):
+    def run_D(self, img, c, curr_nimg_ratio, blur_sigma=0, blur_sigma_raw=0, update_emas=False):
         blur_size = np.floor(blur_sigma * 3)
         if blur_size > 0:
             with torch.autograd.profiler.record_function('blur'):
@@ -84,7 +89,7 @@ class StyleGAN2Loss(Loss):
             img['image'] = augmented_pair[:, :img['image'].shape[1]]
             img['image_raw'] = torch.nn.functional.interpolate(augmented_pair[:, img['image'].shape[1]:], size=img['image_raw'].shape[2:], mode='bilinear', antialias=True)
 
-        logits = self.D(img, c, update_emas=update_emas)
+        logits = self.D(img, c, curr_nimg_ratio=curr_nimg_ratio, update_emas=update_emas)
         return logits
 
     def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg):
@@ -119,7 +124,7 @@ class StyleGAN2Loss(Loss):
         if phase in ['Gmain', 'Gboth']:
             with torch.autograd.profiler.record_function('Gmain_forward'):
                 gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution)
-                gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma)
+                gen_logits = self.run_D(img=gen_img, c=gen_c, curr_nimg_ratio=cur_nimg/self.total_kimg, blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 loss_Gmain = torch.nn.functional.softplus(-gen_logits)
@@ -244,7 +249,7 @@ class StyleGAN2Loss(Loss):
         if phase in ['Dmain', 'Dboth']:
             with torch.autograd.profiler.record_function('Dgen_forward'):
                 gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob, neural_rendering_resolution=neural_rendering_resolution, update_emas=True)
-                gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True)
+                gen_logits = self.run_D(img=gen_img, c=gen_c, curr_nimg_ratio=cur_nimg/self.total_kimg, blur_sigma=blur_sigma, update_emas=True)
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 loss_Dgen = torch.nn.functional.softplus(gen_logits)
@@ -260,7 +265,8 @@ class StyleGAN2Loss(Loss):
                 real_img_tmp_image_raw = real_img['image_raw'].detach().requires_grad_(phase in ['Dreg', 'Dboth'])
                 real_img_tmp = {'image': real_img_tmp_image, 'image_raw': real_img_tmp_image_raw}
 
-                real_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma)
+                real_logits = self.run_D(img=real_img_tmp, c=real_c, curr_nimg_ratio=cur_nimg/self.total_kimg,
+                                         blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/real', real_logits)
                 training_stats.report('Loss/signs/real', real_logits.sign())
 
