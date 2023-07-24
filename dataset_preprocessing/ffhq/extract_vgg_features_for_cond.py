@@ -168,7 +168,8 @@ def modify_condition_data(condition_dict, filenames, new_features, src_data_dir,
                     shutil.copy(os.path.join(src_data_dir, filename),
                                 os.path.join(dest_data_dir, filename))
             except IndexError as e:
-                print(f'Error {e} in filename {filename} and feature {new_features[idx]}')
+                print(f'Error {e} in filename {filename}')
+                continue
             extended_feature = existing_feature + processed_new_feature
             condition_dict[filename] = extended_feature
         else:
@@ -182,6 +183,7 @@ def sanity_check_condition_dict():
 condition_dict = run_feature_extraction_and_get_modified_condition(
     model_name='face_recognition_dlib',
     data_loader_name='ffhq_np',
-    condition_file_path='/is/cluster/fast/pghosh/datasets/ffhq/256X256/dataset.json')
+    condition_file_path='/is/cluster/fast/pghosh/datasets/ffhq/256X256/dataset.json',
+    dest_data_dir='/is/cluster/fast/pghosh/datasets/ffhq/256X256_small/')
 write_formatted_json(condition_dict=condition_dict,
                      output_file_path='/is/cluster/fast/pghosh/datasets/ffhq/vgg_features_with_cam.json')
