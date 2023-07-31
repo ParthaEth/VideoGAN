@@ -53,6 +53,8 @@ class FFHQDataset(Dataset):
             self.img_open_func = Image.open
         elif img_open_func.upper() == 'CV':
             self.img_open_func = cv2.imread
+        elif img_open_func.upper() == 'FACE_RECOGNITION_DLIB':
+            self.img_open_func = face_recognition.load_image_file
 
     def __len__(self):
         return len(self.img_labels)
@@ -89,6 +91,13 @@ def get_dataloader(data_loader_name):
                 '/is/cluster/fast/pghosh/datasets/ffhq/256X256',
                 transform=transforms, img_open_func='CV'),
             batch_size=1, shuffle=False, num_workers=1)
+    elif data_loader_name.lower() == 'ffhq_dlib':
+        transforms = None
+        data_loader = torch.utils.data.DataLoader(
+            FFHQDataset(
+                '/is/cluster/fast/pghosh/datasets/ffhq/256X256',
+                transform=transforms, img_open_func='face_recognition_dlib'),
+            batch_size=1, shuffle=False, num_workers=1)
     elif data_loader_name.lower() == 'sample_2x3x224x224':
         data_loader = [
             (['1.jpg'], [cv2.imread('sample_data/1.jpg')]),
@@ -119,7 +128,7 @@ def run_feature_extraction_and_get_modified_condition(model_name,
         condition_dict = convert_json_condition_data(condition_data=condition_data)
 
     for filenames, batch in tqdm(data_loader):
-        batch = post_process_batch(model_name=model_name, batch=batch)
+        #batch = post_process_batch(model_name=model_name, batch=batch)
         feature_out = feature_model(batch)
         if condition_file_path is not None:
             modify_condition_data(condition_dict=condition_dict,
@@ -182,8 +191,8 @@ def sanity_check_condition_dict():
 
 condition_dict = run_feature_extraction_and_get_modified_condition(
     model_name='face_recognition_dlib',
-    data_loader_name='ffhq_np',
+    data_loader_name='ffhq_dlib',
     condition_file_path='/is/cluster/fast/pghosh/datasets/ffhq/256X256/dataset.json',
-    dest_data_dir='/is/cluster/fast/pghosh/datasets/ffhq/256X256_small/')
+    dest_data_dir='/is/cluster/fast/pghosh/pravir/outputs/VideoGAN/256X256')
 write_formatted_json(condition_dict=condition_dict,
-                     output_file_path='/is/cluster/fast/pghosh/datasets/ffhq/vgg_features_with_cam.json')
+                     output_file_path='/is/cluster/fast/pghosh/pravir/outputs/VideoGAN/vgg_features_with_cam.json')
