@@ -54,6 +54,7 @@ class FFHQDataset(Dataset):
         elif img_open_func.upper() == 'CV':
             self.img_open_func = cv2.imread
         elif img_open_func.upper() == 'FACE_RECOGNITION_DLIB':
+            print(f'Using FACE_RECOGNITION_DLIB image reading function')
             self.img_open_func = face_recognition.load_image_file
 
     def __len__(self):
@@ -67,7 +68,7 @@ class FFHQDataset(Dataset):
             image = self.transform(image)
         if self.target_transform:
             label = self.target_transform(label)
-        return label, image
+        return label, image, img_path
 
 
 def get_dataloader(data_loader_name):
@@ -110,7 +111,7 @@ def get_dataloader(data_loader_name):
 
 def post_process_batch(model_name, batch):
     if model_name.lower() == 'face_recognition_dlib':
-        batch = batch[0].numpy()
+        batch = face_recognition.load_image_file(batch[0])
     return batch
 
 
@@ -127,8 +128,8 @@ def run_feature_extraction_and_get_modified_condition(model_name,
         condition_data = read_json_condition_file(condition_file_path=condition_file_path)
         condition_dict = convert_json_condition_data(condition_data=condition_data)
 
-    for filenames, batch in tqdm(data_loader):
-        #batch = post_process_batch(model_name=model_name, batch=batch)
+    for filenames, batch, img_path in tqdm(data_loader):
+        batch = post_process_batch(model_name=model_name, batch=img_path)
         feature_out = feature_model(batch)
         if condition_file_path is not None:
             modify_condition_data(condition_dict=condition_dict,
