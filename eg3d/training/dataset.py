@@ -243,6 +243,6 @@ class ImageFolderDataset(Dataset):
          # labels = [[0.9827, 0.0, -0.1852, 0.5, 0.0, -1.0, 0.0, 0.0, -0.1852, 0.0, -0.9827, 2.6533, 0.0, 0.0, 0.0, 1.0,
          #           4.2634, 0.0, 0.5, 0.0, 4.2634, 0.5, 0.0, 0.0, 1.0, ],]
          # labels = np.array(labels, dtype=np.float32).repeat(len(self._image_fnames), axis=0)
-        return labels
+         return labels
 
 #----------------------------------------------------------------------------
