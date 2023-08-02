@@ -12,7 +12,7 @@
 """Generator architecture from the paper
 "Alias-Free Generative Adversarial Networks"."""
 
-import pickle
+import dill
 import sys
 import numpy as np
 import scipy.signal
@@ -136,7 +136,7 @@ class MappingNetwork(torch.nn.Module):
         # additions
         embed_path = 'training/in_embeddings/tf_efficientnet_lite0.pkl'
         with open(embed_path, 'rb') as f:
-            self.embed = pickle.Unpickler(f).load()['embed']
+            self.embed = dill.Unpickler(f).load()['embed']
         print(f'loaded imagenet embeddings from {embed_path}: {self.embed}')
         if rand_embedding:
             self.embed.__init__(num_embeddings=self.embed.num_embeddings, embedding_dim=self.embed.embedding_dim)

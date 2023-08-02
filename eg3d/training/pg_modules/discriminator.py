@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.transforms import Normalize
-import pickle
+import dill
 
 from .diffaug import DiffAugment
 from ..networks_stylegan2 import FullyConnectedLayer
@@ -101,7 +101,7 @@ class SingleDiscCond(nn.Module):
         # Pretrained Embeddings
         embed_path = 'training/in_embeddings/tf_efficientnet_lite0.pkl'
         with open(embed_path, 'rb') as f:
-            self.embed = pickle.Unpickler(f).load()['embed']
+            self.embed = dill.Unpickler(f).load()['embed']
         print(f'loaded imagenet embeddings from {embed_path}: {self.embed}')
         if rand_embedding:
             self.embed.__init__(num_embeddings=self.embed.num_embeddings, embedding_dim=self.embed.embedding_dim)
