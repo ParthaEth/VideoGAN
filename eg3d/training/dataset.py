@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 import shutil
 import imageio
+from scipy.ndimage import gaussian_filter
 
 
 try:
@@ -200,6 +201,7 @@ class VideoFolderDataset(Dataset):
         resolution      = None, # Ensure specific resolution, None = highest available.
         return_video    = False,
         time_steps = 32,        # how many time steps of the video to take
+        blur_sigma=0,
         **super_kwargs,         # Additional arguments for the Dataset base class.
     ):
         self.time_steps = time_steps
@@ -210,6 +212,7 @@ class VideoFolderDataset(Dataset):
         self.axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
         self.peep_window_crop_size = 256
         # self.peep_window_rescale_size = 32
+        self.blur_sigma = blur_sigma
 
         if os.path.isdir(self._path):
             self._type = 'dir'
@@ -293,6 +296,13 @@ class VideoFolderDataset(Dataset):
                 vid_vol = self.get_from_cached(fname)
 
         vid_vol = vid_vol[:, :, :, ::5][:, :, :, :self.time_steps]
+        # vid vol shape = (3, 256, 256, 32)
+        for t in range(self.time_steps):
+            # import ipdb; ipdb.set_trace()
+            vid_vol[:, :, :, t] = gaussian_filter(vid_vol[:, :, :, t].transpose(1, 2, 0),
+                                                  sigma=(self.blur_sigma, self.blur_sigma),
+                                                  axes=(0, 1)).transpose(2, 0, 1)
+
         _, _, resolution, _ = vid_vol.shape
         frame_location = np.random.randint(0, self.time_steps, 1)[0]
         if self.return_video:

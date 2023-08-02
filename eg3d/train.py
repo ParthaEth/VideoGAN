@@ -114,11 +114,13 @@ def launch_training(c, desc, outdir, dry_run):
 
 #----------------------------------------------------------------------------
 
-def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames, time_steps):
+
+def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames, time_steps, blur_sigma):
     try:
         dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data, use_labels=True,
                                          max_size=None, xflip=False, return_video=return_video, cache_dir=cache_dir,
-                                         fixed_time_frames=fixed_time_frames, time_steps=time_steps)
+                                         fixed_time_frames=fixed_time_frames, time_steps=time_steps,
+                                         blur_sigma=blur_sigma)
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # Subclass of training.dataset.Dataset.
         dataset_kwargs.resolution = dataset_obj.resolution # Be explicit about resolution.
         dataset_kwargs.use_labels = dataset_obj.has_labels # Be explicit about labels.
@@ -212,6 +214,13 @@ def parse_comma_separated_list(s):
 @click.option('--fixed_time_frames', help='Take slice of videos always perpendicular to time axis', metavar='BOOL',
               type=bool, default=False, show_default=True)
 @click.option('--time_steps', help='How many frames to work with', metavar='BOOL', type=int, default=32, show_default=True)
+@click.option('--superres',     help='Train superresolution stage. You have to provide the path to a pretrained stem.', is_flag=True)
+@click.option('--path_stem',    help='Path to pretrained stem',  type=str, default = None)
+@click.option('--head_layers',  help='Layers of added superresolution head.', type=click.IntRange(min=1), default=None, show_default=True)
+@click.option('--up_factor',  help='Up the latent code resolution by this factor from stem', type=click.IntRange(min=2), default=None, show_default=True)
+@click.option('--blur_sigma',   help='Blur the true data so we can train a low latent res model first', metavar='INT', type=click.FloatRange(min=0), required=True)
+
+
 def main(**kwargs):
     """Train a GAN using the techniques described in the paper
     "Alias-Free Generative Adversarial Networks".
@@ -239,7 +248,9 @@ def main(**kwargs):
     opts = dnnlib.EasyDict(kwargs) # Command line arguments.
     c = dnnlib.EasyDict() # Main config dict.
     c.G_kwargs = dnnlib.EasyDict(class_name=None, z_dim=64, w_dim=512, return_video=opts.return_video,
-                                 mapping_kwargs=dnnlib.EasyDict())
+                                 mapping_kwargs=dnnlib.EasyDict(), path_stem=opts.path_stem,
+                                 head_layers=opts.head_layers, data_blur_sigma=opts.blur_sigma,
+                                 up_factor=opts.up_factor)
     c.D_kwargs = dnnlib.EasyDict(class_name='training.networks_stylegan2.Discriminator', block_kwargs=dnnlib.EasyDict(),
                                  mapping_kwargs=dnnlib.EasyDict(), epilogue_kwargs=dnnlib.EasyDict())
     c.G_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8,
@@ -252,7 +263,7 @@ def main(**kwargs):
     # Training set.
     c.training_set_kwargs, dataset_name = init_dataset_kwargs(
         data=opts.data, return_video=opts.return_video, cache_dir=opts.d_set_cache_dir,
-        fixed_time_frames=opts.fixed_time_frames, time_steps=opts.time_steps)
+        fixed_time_frames=opts.fixed_time_frames, time_steps=opts.time_steps, blur_sigma=opts.blur_sigma)
     if opts.cond and not c.training_set_kwargs.use_labels:
         raise click.ClickException('--cond=True requires labels specified in dataset.json')
     c.training_set_kwargs.use_labels = opts.cond

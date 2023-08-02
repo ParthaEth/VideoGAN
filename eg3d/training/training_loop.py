@@ -141,7 +141,7 @@ def save_video_grid(video, fname, drange, grid_size, labels=None):
     video_out.close()
 
 
-#----------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 def training_loop(
     run_dir                 = '.',      # Output directory.

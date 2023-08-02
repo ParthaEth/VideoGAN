@@ -492,11 +492,8 @@ class SynthesisNetwork(torch.nn.Module):
         self.first_cutoff = first_cutoff
         self.channel_max = channel_max
         self.num_layers = num_layers
-        # Todo(Partha): For the rotational inverient styleGAN this flag might be needed. When conv_kernel = 1 and
-        #  use_radial_filters = True would be needed
-        # self.conv_kernel = layer_kwargs['conv_kernel']
         self.conv_kernel = 3
-        self.use_radial_filters = False  # layer_kwargs['use_radial_filters']
+        self.use_radial_filters = False  # layer_kwargs['use_radial_filters'] StyleGAN-r settings
 
         cutoffs, stopbands, sampling_rates, half_widths, sizes, channels = self.get_layer_specs()
         self.sampling_rates = sampling_rates
@@ -613,6 +610,8 @@ class SuperresGenerator(torch.nn.Module):
         # load pretrained stem
         with dnnlib.util.open_url(path_stem) as f:
             G_stem = legacy.load_network_pkl(f)['G_ema']
+
+        # import ipdb; ipdb.set_trace()
         self.mapping = G_stem.mapping
         self.synthesis = G_stem.synthesis
 
@@ -640,7 +639,8 @@ class SuperresGenerator(torch.nn.Module):
         # update G and G.synthesis params
         self.img_resolution = G_stem.img_resolution * up_factor
         self.synthesis.img_resolution = self.img_resolution
-        assert img_resolution == self.img_resolution, f"Resolution mismatch. Dataset: {img_resolution}, G output: {self.img_resolution}"
+        assert img_resolution == self.img_resolution, f"Resolution mismatch. Dataset: {img_resolution}, " \
+                                                      f"G output: {self.img_resolution}"
 
         self.num_layers = stem_len + head_layers
         self.synthesis.num_layers = self.num_layers
@@ -735,3 +735,34 @@ class SuperresGenerator(torch.nn.Module):
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         img = self.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
         return img
+
+@persistence.persistent_class
+class UnifiedGenerator(torch.nn.Module):
+    def __init__(self,
+        z_dim,                      # Input latent (Z) dimensionality.
+        c_dim,                      # Conditioning label (C) dimensionality.
+        w_dim,                      # Intermediate latent (W) dimensionality.
+        img_resolution,             # Output resolution.
+        img_channels,               # Number of output color channels.
+        path_stem,
+        head_layers,
+        up_factor,
+        mapping_kwargs      = {},   # Arguments for MappingNetwork.
+        **synthesis_kwargs,         # Arguments for SynthesisNetwork.
+    ):
+        super().__init__()
+        sr_feat_params = [path_stem, head_layers, up_factor]
+        if any(param is None for param in sr_feat_params):
+            assert all(param is None for param in sr_feat_params), 'if any of these params are None this is base ' \
+                                                                   'stage, hence all must be None'
+            self.generator = Generator(z_dim,  c_dim, w_dim, img_resolution, img_channels, mapping_kwargs,
+                                       **synthesis_kwargs)
+        else:
+            self.generator = SuperresGenerator(img_resolution, path_stem, head_layers, up_factor, **synthesis_kwargs)
+
+        self.mapping = self.generator.mapping
+        self.synthesis = self.generator.synthesis
+
+    def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
+        return self.generator(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
+                              update_emas=update_emas, **synthesis_kwargs)

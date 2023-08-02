@@ -13,7 +13,7 @@ import torchvision.transforms
 
 from torch_utils import persistence
 from training.networks_stylegan2 import Generator as StyleGAN2Backbone
-from training.networks_stylegan_xl import Generator as StyleGANXLBackbone
+from training.networks_stylegan_xl import UnifiedGenerator as StyleGANXLBackbone
 from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
 # from training.volumetric_rendering.ray_sampler import RaySampler
 import dnnlib
@@ -31,6 +31,10 @@ class TriPlaneGenerator(torch.nn.Module):
         rendering_kwargs    = {},
         sr_kwargs = {},
         return_video = False,
+        path_stem = None,           # Progressively growing from previous stem. this is path to that pretrained stem
+        head_layers = None,         # How many head layers to add on top of the stem
+        up_factor = None,           # What is the resolution up factor at this super res scale
+        data_blur_sigma = None,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -51,9 +55,13 @@ class TriPlaneGenerator(torch.nn.Module):
         # self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
         #                                   img_channels=self.appearance_features + self.motion_features,
         #                                   mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
-        self.backbone = StyleGANXLBackbone(z_dim, c_dim, w_dim, img_resolution=256,
+        if not isinstance(data_blur_sigma, str):
+            data_blur_sigma = f'{data_blur_sigma:.2f}'
+        blur_to_res = {'10.00': 16, '5.00': 32, '2.50': 64, '1.25': 128, '0.00': 256}
+        self.backbone = StyleGANXLBackbone(z_dim, c_dim, w_dim, img_resolution=blur_to_res[data_blur_sigma],
                                            img_channels=self.appearance_features + self.motion_features,
-                                           mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
+                                           mapping_kwargs=mapping_kwargs, path_stem=path_stem, head_layers=head_layers,
+                                           up_factor=up_factor, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
