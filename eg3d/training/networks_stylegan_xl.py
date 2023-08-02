@@ -561,7 +561,7 @@ class SynthesisNetwork(torch.nn.Module):
             f'num_layers={self.num_layers:d}, num_critical={self.num_critical:d},',
             f'margin_size={self.margin_size:d}, num_fp16_res={self.num_fp16_res:d}'])
 
-#----------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
 
 @persistence.persistent_class
 class Generator(torch.nn.Module):

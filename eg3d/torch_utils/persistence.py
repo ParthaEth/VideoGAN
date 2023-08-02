@@ -16,7 +16,7 @@ usable even if the original code is no longer available, or if the current
 version of the code is not consistent with what was originally pickled."""
 
 import sys
-import pickle
+import dill
 import io
 import inspect
 import copy
@@ -248,6 +248,6 @@ def _check_pickleable(obj):
             return None # Persistent objects are pickleable, by virtue of the constructor check.
         return obj
     with io.BytesIO() as f:
-        pickle.dump(recurse(obj), f)
+        dill.dump(recurse(obj), f)
 
 #----------------------------------------------------------------------------

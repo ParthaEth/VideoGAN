@@ -194,7 +194,8 @@ def training_loop(
     # Load training set.
     if rank == 0:
         print('Loading training set...')
-    training_set = dnnlib.util.construct_class_by_name(**training_set_kwargs) # subclass of training.dataset.Dataset
+    # import ipdb; ipdb.set_trace()
+    training_set = dnnlib.util.construct_class_by_name(**training_set_kwargs)  # subclass of training.dataset.Dataset
     training_set_sampler = misc.InfiniteSampler(dataset=training_set, rank=rank, num_replicas=num_gpus, seed=random_seed)
     training_set_iterator = iter(torch.utils.data.DataLoader(dataset=training_set, sampler=training_set_sampler,
                                                              batch_size=batch_size//num_gpus, **data_loader_kwargs,
@@ -278,6 +279,15 @@ def training_loop(
                     class_name=opt_kwargs['class_name'],)  # subclass of torch.optim.Optimizer
                 #TODO(Partha): Check if all parameters have been added!
                 # import ipdb; ipdb.set_trace()
+            elif name == 'D':
+                opt_params = []
+                total_trainable = 0
+                for name, d_opt_params in discriminator.named_parameters():
+                    if name.find('feature_networks') < 0:  # if not part of feature extraction network
+                        opt_params.append(d_opt_params)
+                        total_trainable += np.prod(d_opt_params.shape)
+                opt = dnnlib.util.construct_class_by_name(opt_params, **opt_kwargs)  # subclass of torch.optim.Optimizer
+                print(f'Discriminator trainable parameter count: {total_trainable}')
             else:
                 opt = dnnlib.util.construct_class_by_name(module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
             phases += [dnnlib.EasyDict(name=name+'main', module=module, opt=opt, interval=1)]
