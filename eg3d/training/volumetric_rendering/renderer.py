@@ -96,13 +96,14 @@ class BaseRenderer(torch.nn.Module):
             torch.nn.Linear(64, 5, bias=True),
             torch.nn.Tanh()
         )
-        self.apply(self._init_weights)
+        #TODO(Partha): Perhaps init weight had significance
+        # self.apply(self._init_weights)
 
-    def _init_weights(self, module):
-        if isinstance(module, torch.nn.Linear):
-            torch.nn.init.trunc_normal_(module.weight.data, mean=0, std=0.15, a=-1, b=1)
-            if module.bias is not None:
-                module.bias.data.zero_()
+    # def _init_weights(self, module):
+    #     if isinstance(module, torch.nn.Linear):
+    #         torch.nn.init.trunc_normal_(module.weight.data, mean=0, std=0.15, a=-1, b=1)
+    #         if module.bias is not None:
+    #             module.bias.data.zero_()
 
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
         raise NotImplementedError()

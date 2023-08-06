@@ -609,17 +609,16 @@ class SuperresGenerator(torch.nn.Module):
 
         # load pretrained stem
         with dnnlib.util.open_url(path_stem) as f:
-            G_stem = legacy.load_network_pkl(f)['G_ema']
+            G_stem = legacy.load_network_pkl(f)['G_ema'].backbone
 
-        # import ipdb; ipdb.set_trace()
         self.mapping = G_stem.mapping
         self.synthesis = G_stem.synthesis
 
         # update G params
-        self.z_dim = G_stem.z_dim
-        self.c_dim = G_stem.c_dim
-        self.w_dim = G_stem.w_dim
-        self.img_channels = G_stem.img_channels
+        self.z_dim = G_stem.generator.z_dim
+        self.c_dim = G_stem.generator.c_dim
+        self.w_dim = G_stem.generator.w_dim
+        self.img_channels = G_stem.generator.img_channels
         self.channel_base = G_stem.synthesis.channel_base
         self.channel_max = G_stem.synthesis.channel_max
         self.margin_size = G_stem.synthesis.margin_size
@@ -637,7 +636,7 @@ class SuperresGenerator(torch.nn.Module):
         stem_len = len(self.synthesis.layer_names) + 1
 
         # update G and G.synthesis params
-        self.img_resolution = G_stem.img_resolution * up_factor
+        self.img_resolution = G_stem.generator.img_resolution * up_factor
         self.synthesis.img_resolution = self.img_resolution
         assert img_resolution == self.img_resolution, f"Resolution mismatch. Dataset: {img_resolution}, " \
                                                       f"G output: {self.img_resolution}"
@@ -751,6 +750,10 @@ class UnifiedGenerator(torch.nn.Module):
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
+        # import ipdb; ipdb.set_trace()
+        self.z_dim = z_dim
+        self.c_dim = c_dim
+        self.w_dim = w_dim
         sr_feat_params = [path_stem, head_layers, up_factor]
         if any(param is None for param in sr_feat_params):
             assert all(param is None for param in sr_feat_params), 'if any of these params are None this is base ' \

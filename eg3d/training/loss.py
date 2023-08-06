@@ -319,9 +319,9 @@ class StyleGAN2Loss(Loss):
                                 create_graph=True, only_inputs=True, allow_unused=True)
 
                             r1_grads_image_pen = r1_grads_image_raw_pen = r1_grads_peep_vid_pen = 0
-                            if r1_grads[0] is not None:
+                            if r1_grads[0] is not None and False:  # Todo(Partha): Clean up, switching off r1 penalty on image discrim
                                 r1_grads_image_pen = torch.nan_to_num(r1_grads[0]).square().sum([1, 2, 3])
-                            if r1_grads[1] is not None:
+                            if r1_grads[1] is not None and False:  # Todo(Partha): Clean up, switching off r1 penalty on image discrim
                                 r1_grads_image_raw_pen = torch.nan_to_num(r1_grads[1]).square().sum([1, 2, 3])
                             if r1_grads[2] is not None:
                                 r1_grads_peep_vid_pen = torch.nan_to_num(r1_grads[2]).square().sum([1, 2, 3, 4])

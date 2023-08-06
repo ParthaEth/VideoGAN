@@ -269,9 +269,17 @@ def training_loop(
             opt_kwargs.lr = opt_kwargs.lr * mb_ratio
             opt_kwargs.betas = [beta ** mb_ratio for beta in opt_kwargs.betas]
             if name == 'G':
+                if hasattr(module.backbone.generator, 'head_layer_name'):
+                    # training additional layer on top of stem. Freeze stem weights
+                    backbone_params = []
+                    for g_layer_name in module.backbone.synthesis.layer_names:
+                        if g_layer_name in module.backbone.generator.head_layer_names:
+                            backbone_params += [params for params in getattr(module.backbone.synthesis, g_layer_name).parameters()]
+                else:
+                    backbone_params = module.backbone.parameters()
                 opt = dnnlib.util.construct_class_by_name(
                     [{'params': module.renderer.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('renderer_lr_mult', 1.0)/mb_ratio},
-                     {'params': module.backbone.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('backbone_lr_mult', 1.0)},
+                     {'params': backbone_params, 'lr': opt_kwargs['lr'] * opt_kwargs.get('backbone_lr_mult', 1.0)},
                      {'params': module.superresolution.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('superresolution_lr_mult', 1.0)},
                      {'params': module.decoder.parameters(), 'lr': opt_kwargs['lr'] * opt_kwargs.get('decoder_lr_mult', 1.0)/mb_ratio},
                     ],
@@ -282,8 +290,8 @@ def training_loop(
             elif name == 'D':
                 opt_params = []
                 total_trainable = 0
-                for name, d_opt_params in discriminator.named_parameters():
-                    if name.find('feature_networks') < 0:  # if not part of feature extraction network
+                for layer_name, d_opt_params in discriminator.named_parameters():
+                    if layer_name.find('feature_networks') < 0:  # if not part of feature extraction network
                         opt_params.append(d_opt_params)
                         total_trainable += np.prod(d_opt_params.shape)
                 opt = dnnlib.util.construct_class_by_name(opt_params, **opt_kwargs)  # subclass of torch.optim.Optimizer
