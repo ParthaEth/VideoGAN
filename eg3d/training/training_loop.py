@@ -254,6 +254,18 @@ def training_loop(
                 if param.numel() > 0 and num_gpus > 1:
                     torch.distributed.broadcast(param, src=0)
 
+    # if rank == 0:
+    #     for module in [G, discriminator, G_ema, augment_pipe]:
+    #         if module is not None:
+    #             print(next(module.parameters()))
+    #             break
+    #
+    # if rank == 5:
+    #     for module in [G, discriminator, G_ema, augment_pipe]:
+    #         if module is not None:
+    #             print(next(module.parameters()))
+    #             break
+
     # Setup training phases.
     if rank == 0:
         print('Setting up training phases...')
@@ -377,6 +389,11 @@ def training_loop(
             # Accumulate gradients.
             phase.opt.zero_grad(set_to_none=True)
             phase.module.requires_grad_(True)
+
+            ### PROJECTED GAN ADDITIONS ### Disabling grad computation for the feature net
+            if phase.name in ['Dmain', 'Dboth', 'Dreg'] and hasattr(phase.module.image_pair_discrim, 'feature_networks'):
+                phase.module.image_pair_discrim.feature_networks.requires_grad_(False)
+
             num_iter = 0
             for real_img, peep_vid_real, real_c, gen_z, gen_c in zip(phase_real_img, phase_peep_vid_real, phase_real_c, phase_gen_z, phase_gen_c):
                 loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c,
@@ -393,15 +410,19 @@ def training_loop(
                         if param.grad is None:
                             param.grad = torch.zeros_like(param)
                         flat.append(param.grad.flatten())
-                    flat = torch.cat(flat)
+                    flat = torch.clip(torch.cat(flat), -1, 1)
                     if num_gpus > 1:
                         misc.nan_to_num(flat, nan=0, posinf=1e5, neginf=-1e5, out=flat)
                         torch.distributed.all_reduce(flat)
                         flat /= num_gpus
+                        # if rank == 0:
+                        #     print(flat.norm(2), flat.max(), flat.min())
 
                     grads = flat.split([param.numel() for param in params])
                     for param, grad in zip(params, grads):
                         param.grad = grad.reshape(param.shape)
+
+                    # clip_grad_norm(phase.module.parameters(), 1)
                 phase.opt.step()
             # print(f'at {phase.name} diff check')
             # misc.check_ddp_consistency(module, ignore_regex=r'.*\.[^.]+_(avg|ema)')

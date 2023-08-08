@@ -68,6 +68,7 @@ class Dataset(torch.utils.data.Dataset):
             self._xflip = np.concatenate([self._xflip, np.ones_like(self._xflip)])
 
     def _get_raw_labels(self):
+        # import ipdb; ipdb.set_trace()
         if self._raw_labels is None:
             self._raw_labels = self._load_raw_labels() if self._use_labels else None
             if self._raw_labels is None:
@@ -116,8 +117,9 @@ class Dataset(torch.utils.data.Dataset):
                                                       f'received {list(image.shape)}'
         assert image.dtype == np.uint8
         if self._xflip[idx]:
-            assert image.ndim == 3 # CHW
+            assert image.ndim == 3  # CHW
             image = image[:, :, ::-1]
+            peep_vid = peep_vid[:, :, ::-1, :]
         label = self.get_label(idx)
         if len(label) > 0:
             label[0:6] = aug_label
@@ -126,6 +128,7 @@ class Dataset(torch.utils.data.Dataset):
 
     def get_label(self, idx):
         label = self._get_raw_labels()[self._raw_idx[idx]]
+        # import ipdb; ipdb.set_trace()
         if label.dtype == np.int64:
             onehot = np.zeros(self.label_shape, dtype=np.float32)
             onehot[label] = 1
@@ -295,7 +298,11 @@ class VideoFolderDataset(Dataset):
                 self.write_to_cache(fname)
                 vid_vol = self.get_from_cached(fname)
 
-        vid_vol = vid_vol[:, :, :, ::5][:, :, :, :self.time_steps]
+        if 0 < self.time_steps < vid_vol.shape[-1]/5:
+            vid_vol = vid_vol[:, :, :, ::5][:, :, :, :self.time_steps]
+        else:
+            self.time_steps = vid_vol.shape[-1]
+
         # vid vol shape = (3, 256, 256, 32)
         for t in range(self.time_steps):
             # import ipdb; ipdb.set_trace()
@@ -304,7 +311,9 @@ class VideoFolderDataset(Dataset):
                                                   axes=(0, 1)).transpose(2, 0, 1)
 
         _, _, resolution, _ = vid_vol.shape
+
         frame_location = np.random.randint(0, self.time_steps, 1)[0]
+
         if self.return_video:
             if getattr(self, 'fixed_time_frames', True):
                 constant_axis = 't'
@@ -320,8 +329,6 @@ class VideoFolderDataset(Dataset):
             constant_axis = 't'
             peep_location = None
             lbl_cond = self.axis_dict[constant_axis] + [frame_location / self.time_steps, ] + [0, 0]
-
-        # import ipdb; ipdb.set_trace()
 
         if constant_axis == 'x':
             image = vid_vol[:, frame_location, :, :]

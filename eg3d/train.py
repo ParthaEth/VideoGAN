@@ -185,7 +185,7 @@ def parse_comma_separated_list(s):
 @click.option('--neural_rendering_resolution_final', help='Final resolution to render at, if blending', metavar='INT',  type=click.IntRange(min=1), required=False, default=None)
 @click.option('--neural_rendering_resolution_fade_kimg', help='Kimg to blend resolution over', metavar='INT',  type=click.IntRange(min=0), required=False, default=1000, show_default=True)
 
-@click.option('--blur_fade_kimg', help='Blur over how many', metavar='INT',  type=click.IntRange(min=1), required=False, default=200)
+@click.option('--blur_fade_kimg', help='Blur over how many', metavar='INT',  type=click.IntRange(min=1), required=False, default=300)
 @click.option('--gen_pose_cond', help='If true, enable generator pose conditioning.', metavar='BOOL',  type=bool, required=False, default=False)
 @click.option('--c-scale', help='Scale factor for generator pose conditioning.', metavar='FLOAT',  type=click.FloatRange(min=0), required=False, default=1)
 @click.option('--c-noise', help='Add noise for generator pose conditioning.', metavar='FLOAT',  type=click.FloatRange(min=0), required=False, default=0)
@@ -378,8 +378,8 @@ def main(**kwargs):
         c.G_reg_interval = opts.density_reg_every
     c.G_kwargs.rendering_kwargs = rendering_options
     c.G_kwargs.num_fp16_res = 0
-    c.loss_kwargs.blur_init_sigma = 10 # Blur the images seen by the discriminator.
-    c.loss_kwargs.blur_fade_kimg = c.batch_size * opts.blur_fade_kimg / 32 # Fade out the blur during the first N kimg.
+    c.loss_kwargs.blur_init_sigma = 2  # Blur the images seen by the discriminator.
+    c.loss_kwargs.blur_fade_kimg = opts.blur_fade_kimg # Fade out the blur during the first N kimg.
 
     c.loss_kwargs.gpc_reg_prob = opts.gpc_reg_prob if opts.gen_pose_cond else None
     c.loss_kwargs.gpc_reg_fade_kimg = opts.gpc_reg_fade_kimg

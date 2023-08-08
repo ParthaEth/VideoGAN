@@ -51,7 +51,7 @@ class TriplaneEncoder(torch.nn.Module):
                                                                  padding=1),
                                                  InterpolationLayer(down_scale_resolutions[0]),
                                                  torch.nn.ReLU(),
-                                                 torch.nn.Conv2d(3 * tri_plane_res[0], 3 * tri_plane_res[0],
+                                                 torch.nn.Conv2d(3 * tri_plane_res[0], tri_plane_res[0],
                                                                  kernel_size=3,
                                                                  padding=1),
                                                  InterpolationLayer(down_scale_resolutions[1])
@@ -72,7 +72,7 @@ class TriplaneEncoder(torch.nn.Module):
         planes = rearrange(planes, 'b row col fd -> b fd row col')
         planes = self.enc_conv_down(planes)
 
-        triplane = rearrange(planes, 'b (n_p fd) row col -> b fd row col n_p', n_p=3)
+        triplane = rearrange(planes, 'b (n_p fd) row col -> b n_p fd row col', n_p=1)
         return triplane
 
 

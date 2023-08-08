@@ -138,7 +138,6 @@ class BaseRenderer(torch.nn.Module):
         rend_res = options['neural_rendering_resolution']
         dtype, device = planes.dtype, planes.device
         coordinates = self.get_3D_grid(rend_res, dtype, device).reshape(1, -1, 3).expand(batch, -1, -1)
-        # import ipdb; ipdb.set_trace()
         lf_gfc_mask = sample_from_planes(self.plane_axes, planes, coordinates, padding_mode='zeros',
                                          box_warp=options['box_warp'])
         # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 3
@@ -179,12 +178,14 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         """Plane: a torch tensor b, 1, 38, h, w"""
         rend_res = options['neural_rendering_resolution']
         # fist self.motion_features are assumed to be motion features
-        batch, _, channels, h, w = planes.shape
+        batch, n_planes, channels, h, w = planes.shape
+        assert n_planes == 1, 'Here it is assumed that planes are stacked in the channel dims'
         motion_feature_planes = planes[:, :, :self.motion_features, :, :].reshape(batch, 3, -1, h, w)
         self.lf_gfc_mask = self.get_motion_feature_vol(motion_feature_planes, options, bypass_network)
         # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth),
         # 5 =((w, h), (w, h), mask)
         global_appearance_features = planes[:, 0, self.motion_features:, :, :]
+        # import ipdb; ipdb.set_trace()
 
         appearance_volume = []
         prev_frame = None
@@ -217,6 +218,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
                                                            align_corners=True, padding_mode='border').squeeze()
         # sampled_features := batch, ch, 1, 1, n_pt -> squeez -> batch, ch, n_pt
         sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
+        # import ipdb; ipdb.set_trace()
 
 
         # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),

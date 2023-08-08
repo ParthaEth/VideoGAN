@@ -143,6 +143,12 @@ class StyleGAN2Loss(Loss):
 
         # Gmain: Maximize logits for generated images.
         if phase in ['Gmain', 'Gboth']:
+            if hasattr(self.G.backbone.generator, 'head_layer_name'):  # blocking grad computation for double safety!
+                self.G.mapping.requires_grad_(False)
+                for name in self.G.backbone.synthesis.layer_names:
+                    getattr(self.G.backbone.synthesis, name).requires_grad_(
+                        name in self.G.backbone.generator.head_layer_names)
+
             with torch.autograd.profiler.record_function('Gmain_forward'):
                 gen_img, _gen_ws = self.run_G(gen_z, gen_c, swapping_prob=swapping_prob,
                                                             neural_rendering_resolution=neural_rendering_resolution)
