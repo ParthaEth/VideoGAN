@@ -16,7 +16,7 @@ from torch_utils import misc
 
 def save_video(recon_vids, original_vids, save_dir):
     def save_vid(vid, full_path):
-        vid = vid.permute(3, 0, 1, 2)
+        vid = torch.clip((vid.permute(3, 0, 1, 2) + 1) * 127.5, 0, 255)
         video_out = imageio.get_writer(full_path, mode='I', fps=30, codec='libx264')
         for video_frame in vid:
             video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
@@ -37,11 +37,11 @@ input_vid_res = 3, 256, 256, 256
 motion_features = 9
 appearance_feat = 9
 tri_plane_res = appearance_feat + motion_features, 64, 64
-over_fit = True
+over_fit = False  # True
 dataset_dir = '/is/cluster/fast/pghosh/datasets/ffhq_X_celebv_hq_1_motions'
 out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
 os.makedirs(out_dir, exist_ok=True)
-b_size = 2  # 32
+b_size = 4  # 32
 
 encoder = TriplaneEncoder(input_vid_res, tri_plane_res).to(device)
 enc_params = [param for param in encoder.parameters()]
@@ -51,7 +51,7 @@ decoder = OSGDecoder(appearance_feat, {'decoder_lr_mul': 1, 'decoder_output_dim'
 dec_params = [param for param in decoder.parameters()]
 
 mdl_params = rend_params + enc_params
-opt = torch.optim.Adam(mdl_params, lr=1e-3, betas=(0.0, 0.9))
+opt = torch.optim.Adam(mdl_params, lr=1e-3, betas=(0.5, 0.9))
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', factor=0.25, patience=300, verbose=True,
                                                        threshold=1e-3)
 
@@ -71,10 +71,11 @@ training_set_iterator = iter(torch.utils.data.DataLoader(dataset=training_set, s
                                                          worker_init_fn=training_set.worker_init_fn, num_workers=0))
 
 _, peep_vid_real, cond = next(training_set_iterator)
+peep_vid_real = peep_vid_real.to(device).to(torch.float32) / 127.5 - 1
 for i in pbar:
     if i != 0 and not over_fit:
         _, peep_vid_real, cond = next(training_set_iterator)
-    peep_vid_real = peep_vid_real.to(device).to(torch.float32) / 127.5 - 1
+        peep_vid_real = peep_vid_real.to(device).to(torch.float32) / 127.5 - 1
     cond = cond.to(device)
 
     planes_batch = encoder(peep_vid_real)

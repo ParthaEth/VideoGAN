@@ -174,7 +174,7 @@ class ProjectedDiscriminator(torch.nn.Module):
 
             feat = F_RandomProj(bb_name, **backbone_kwargs)
             disc = MultiScaleD(
-                channels=np.array(feat.CHANNELS) * 2,
+                channels=np.array(feat.CHANNELS), # * 2,
                 resolutions=feat.RESOLUTIONS,
                 **backbone_kwargs,
             )
@@ -219,10 +219,11 @@ class ProjectedDiscriminator(torch.nn.Module):
                 x_n = F.interpolate(x_n, 224, mode='bilinear', align_corners=False)
 
             # forward pass
-            features_sr = feat(x_n[:, :3])
+            # features_sr = feat(x_n[:, :3])
             features_lr = feat(x_n[:, 3:])
-            features = {}
-            for feature_level in features_sr:
-                features[feature_level] = torch.cat((features_sr[feature_level], features_lr[feature_level]), dim=1)
-            logits += self.discriminators[bb_name](features, c).mean(-1)
+            # features = {}
+            # for feature_level in features_sr:
+            #     features[feature_level] = torch.cat((features_sr[feature_level], features_lr[feature_level]), dim=1)
+            # logits += self.discriminators[bb_name](features, c).mean(-1)
+            logits += self.discriminators[bb_name](features_lr, c).mean(-1)
         return logits
