@@ -50,7 +50,7 @@ rend_params = [param for param in renderer.parameters()]
 decoder = OSGDecoder(appearance_feat, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
 dec_params = [param for param in decoder.parameters()]
 
-mdl_params = rend_params + enc_params
+mdl_params = rend_params + enc_params + dec_params
 opt = torch.optim.Adam(mdl_params, lr=1e-3, betas=(0.5, 0.9))
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', factor=0.25, patience=300, verbose=True,
                                                        threshold=1e-3)

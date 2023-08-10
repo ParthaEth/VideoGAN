@@ -67,7 +67,7 @@ class TriplaneEncoder(torch.nn.Module):
         """
         plane_row_col = self.enc_res_preserve_rc(rearrange(vid_vol, 'b ch row col dep -> b row col (dep ch)'))
         plane_col_dep = self.enc_res_preserve_cd(rearrange(vid_vol, 'b ch row col dep -> b col dep (row ch)'))
-        plane_row_dep = self.enc_res_preserve_rd(rearrange(vid_vol, 'b ch row col dep -> b row col (dep ch)'))
+        plane_row_dep = self.enc_res_preserve_rd(rearrange(vid_vol, 'b ch row col dep -> b row dep (col ch)'))
         planes = torch.cat([plane_row_col, plane_col_dep, plane_row_dep], dim=-1)  # shape = b, row, col, 3*feat_dim
         planes = rearrange(planes, 'b row col fd -> b fd row col')
         planes = self.enc_conv_down(planes)
