@@ -40,15 +40,26 @@ tri_plane_res = appearance_feat + motion_features, 64, 64
 over_fit = False  # True
 dataset_dir = '/is/cluster/fast/pghosh/datasets/ffhq_X_celebv_hq_1_motions'
 out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
+restore_from = None  # '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/enc_rend_and_dec_best.pth'
 os.makedirs(out_dir, exist_ok=True)
 b_size = 4  # 32
 
 encoder = TriplaneEncoder(input_vid_res, tri_plane_res).to(device)
 enc_params = [param for param in encoder.parameters()]
+
 renderer = AxisAligndProjectionRenderer(return_video=True, motion_features=motion_features).to(device)
 rend_params = [param for param in renderer.parameters()]
+
 decoder = OSGDecoder(appearance_feat, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
 dec_params = [param for param in decoder.parameters()]
+
+# resume from checkpoint
+if restore_from is not None:
+    chk_pt = torch.load(restore_from)
+    encoder.load_state_dict(chk_pt['encoder'])
+    decoder.load_state_dict(chk_pt['decoder'])
+    renderer.load_state_dict(chk_pt['renderer'])
+    print(f'restored from {restore_from}')
 
 mdl_params = rend_params + enc_params + dec_params
 opt = torch.optim.Adam(mdl_params, lr=1e-3, betas=(0.5, 0.9))
@@ -91,15 +102,16 @@ for i in pbar:
     losses.append(loss.item())
     psnr_lr = 10 * np.log10(4 / np.mean(losses[-10:]))
     if best_psnr < psnr_lr:
+        import ipdb; ipdb.set_trace()
         best_psnr = psnr_lr
         torch.save({'renderer': renderer.state_dict(), 'decoder': decoder.state_dict(),
                     'encoder': encoder.state_dict()},
-                   os.path.join(out_dir, 'enc_rend_and_dec.pth'))
+                   os.path.join(out_dir, f'enc_rend_and_dec_PSNR_{psnr_lr:0.2f}.pth'))
 
     pbar.set_description(f'loss: {np.mean(losses[-10:]):0.6f} PSNR: {psnr_lr:0.2f}, PSNR_best:{best_psnr:0.2f}')
     scheduler.step(np.mean(losses[-10:]))
 
-    if i % 200 == 0:
+    if i % 200 == 199:
         # Save original and reconstructed video
         save_video(peep_vid.detach(), peep_vid_real, os.path.join(out_dir, f'{i}'))
 
