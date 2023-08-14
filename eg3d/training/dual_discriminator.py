@@ -244,7 +244,7 @@ class DualPeepDicriminator(torch.nn.Module):
         vid_logits = self.vid_discrim(vid_as_b_c_d_h_w_pl_cond, cond_peep_vid * 0)
 
         # import ipdb; ipdb.set_trace()
-        return img_pair_logits, 0*vid_logits
+        return img_pair_logits, vid_logits
 
 #----------------------------------------------------------------------------
 

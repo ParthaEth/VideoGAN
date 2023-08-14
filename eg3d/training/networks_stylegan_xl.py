@@ -660,7 +660,7 @@ class SuperresGenerator(torch.nn.Module):
             use_fp16 = (fparams.sampling_rates[idx] * (2 ** self.num_fp16_res) > self.img_resolution)
             layer = SynthesisLayer(
                 w_dim=self.w_dim, is_torgb=is_torgb, is_critically_sampled=is_critically_sampled, use_fp16=use_fp16,
-                in_channels=int(fparams.channels[prev]), out_channels= int(fparams.channels[idx]),
+                in_channels=int(fparams.channels[prev]), out_channels=int(fparams.channels[idx]),
                 in_size=int(fparams.sizes[prev]), out_size=int(fparams.sizes[idx]),
                 in_sampling_rate=int(fparams.sampling_rates[prev]), out_sampling_rate=int(fparams.sampling_rates[idx]),
                 in_cutoff=fparams.cutoffs[prev], out_cutoff=fparams.cutoffs[idx],

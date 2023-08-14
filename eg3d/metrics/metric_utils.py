@@ -235,6 +235,7 @@ def compute_feature_stats_for_dataset(opts, detector_url, detector_kwargs, rel_l
 
         # Load.
         if flag:
+            print(f'Loaded at metrics/metric_utils.py FID cache from {cache_file}')
             return FeatureStats.load(cache_file)
 
     # Initialize.

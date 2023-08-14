@@ -143,8 +143,8 @@ class StyleGAN2Loss(Loss):
 
         # Gmain: Maximize logits for generated images.
         if phase in ['Gmain', 'Gboth']:
-            if hasattr(self.G.backbone.generator, 'head_layer_name'):  # blocking grad computation for double safety!
-                self.G.mapping.requires_grad_(False)
+            if hasattr(self.G.backbone.generator, 'head_layer_names'):  # blocking grad computation for double safety!
+                self.G.backbone.mapping.requires_grad_(False)
                 for name in self.G.backbone.synthesis.layer_names:
                     getattr(self.G.backbone.synthesis, name).requires_grad_(
                         name in self.G.backbone.generator.head_layer_names)
@@ -163,117 +163,35 @@ class StyleGAN2Loss(Loss):
             with torch.autograd.profiler.record_function('Gmain_backward'):
                 loss_Gmain.mean().mul(gain).backward()
 
-        # Density Regularization
-        # if phase in ['Greg', 'Gboth'] and self.G.rendering_kwargs.get('density_reg', 0) > 0 and self.G.rendering_kwargs['reg_type'] == 'l1':
-        #     if swapping_prob is not None:
-        #         c_swapped = torch.roll(gen_c.clone(), 1, 0)
-        #         c_gen_conditioning = torch.where(torch.rand([], device=gen_c.device) < swapping_prob, c_swapped, gen_c)
-        #     else:
-        #         c_gen_conditioning = torch.zeros_like(gen_c)
-        #
-        #     ws = self.G.mapping(gen_z, c_gen_conditioning, update_emas=False)
-        #     if self.style_mixing_prob > 0:
-        #         with torch.autograd.profiler.record_function('style_mixing'):
-        #             cutoff = torch.empty([], dtype=torch.int64, device=ws.device).random_(1, ws.shape[1])
-        #             cutoff = torch.where(torch.rand([], device=ws.device) < self.style_mixing_prob, cutoff, torch.full_like(cutoff, ws.shape[1]))
-        #             ws[:, cutoff:] = self.G.mapping(torch.randn_like(z), c, update_emas=False)[:, cutoff:]
-        #     initial_coordinates = torch.rand((ws.shape[0], 1000, 3), device=ws.device) * 2 - 1
-        #     perturbed_coordinates = initial_coordinates + torch.randn_like(initial_coordinates) * self.G.rendering_kwargs['density_reg_p_dist']
-        #     all_coordinates = torch.cat([initial_coordinates, perturbed_coordinates], dim=1)
-        #     sigma = self.G.sample_mixed(all_coordinates, torch.randn_like(all_coordinates), ws, update_emas=False)['sigma']
-        #     sigma_initial = sigma[:, :sigma.shape[1]//2]
-        #     sigma_perturbed = sigma[:, sigma.shape[1]//2:]
-        #
-        #     TVloss = torch.nn.functional.l1_loss(sigma_initial, sigma_perturbed) * self.G.rendering_kwargs['density_reg']
-        #     TVloss.mul(gain).backward()
+            # import ipdb;ipdb.set_trace()
+            if hasattr(self.G.backbone.generator, 'head_layer_names'):
+                g_fixed_norm_rec = False
+                for name in self.G.backbone.synthesis.layer_names:
+                    if name not in self.G.backbone.generator.head_layer_names and not g_fixed_norm_rec:  # not in head layer => fixed params
+                        g_fixed_param = getattr(self.G.backbone.synthesis, name).parameters()
+                        training_stats.report(f'G/params/fixed_layer/{name}', next(g_fixed_param).norm(2))
+                        g_fixed_norm_rec = True
+                    if name == self.G.backbone.generator.head_layer_names[0]:  # in head layer => trainable
+                        g_var_param = getattr(self.G.backbone.synthesis, name).parameters()
+                        training_stats.report(f'G/params/trainable_layer/{name}', next(g_var_param).norm(2))
+                        if g_fixed_norm_rec:
+                            break
+            # import ipdb; ipdb.set_trace()
 
-        # Alternative density regularization
-        # if phase in ['Greg', 'Gboth'] and self.G.rendering_kwargs.get('density_reg', 0) > 0 and self.G.rendering_kwargs['reg_type'] == 'monotonic-detach':
-        #     if swapping_prob is not None:
-        #         c_swapped = torch.roll(gen_c.clone(), 1, 0)
-        #         c_gen_conditioning = torch.where(torch.rand([], device=gen_c.device) < swapping_prob, c_swapped, gen_c)
-        #     else:
-        #         c_gen_conditioning = torch.zeros_like(gen_c)
-        #
-        #     ws = self.G.mapping(gen_z, c_gen_conditioning, update_emas=False)
-        #
-        #     initial_coordinates = torch.rand((ws.shape[0], 2000, 3), device=ws.device) * 2 - 1 # Front
-        #
-        #     perturbed_coordinates = initial_coordinates + torch.tensor([0, 0, -1], device=ws.device) * (1/256) * self.G.rendering_kwargs['box_warp'] # Behind
-        #     all_coordinates = torch.cat([initial_coordinates, perturbed_coordinates], dim=1)
-        #     sigma = self.G.sample_mixed(all_coordinates, torch.randn_like(all_coordinates), ws, update_emas=False)['sigma']
-        #     sigma_initial = sigma[:, :sigma.shape[1]//2]
-        #     sigma_perturbed = sigma[:, sigma.shape[1]//2:]
-        #
-        #     monotonic_loss = torch.relu(sigma_initial.detach() - sigma_perturbed).mean() * 10
-        #     monotonic_loss.mul(gain).backward()
-        #
-        #
-        #     if swapping_prob is not None:
-        #         c_swapped = torch.roll(gen_c.clone(), 1, 0)
-        #         c_gen_conditioning = torch.where(torch.rand([], device=gen_c.device) < swapping_prob, c_swapped, gen_c)
-        #     else:
-        #         c_gen_conditioning = torch.zeros_like(gen_c)
-        #
-        #     ws = self.G.mapping(gen_z, c_gen_conditioning, update_emas=False)
-        #     if self.style_mixing_prob > 0:
-        #         with torch.autograd.profiler.record_function('style_mixing'):
-        #             cutoff = torch.empty([], dtype=torch.int64, device=ws.device).random_(1, ws.shape[1])
-        #             cutoff = torch.where(torch.rand([], device=ws.device) < self.style_mixing_prob, cutoff, torch.full_like(cutoff, ws.shape[1]))
-        #             ws[:, cutoff:] = self.G.mapping(torch.randn_like(z), c, update_emas=False)[:, cutoff:]
-        #     initial_coordinates = torch.rand((ws.shape[0], 1000, 3), device=ws.device) * 2 - 1
-        #     perturbed_coordinates = initial_coordinates + torch.randn_like(initial_coordinates) * (1/256) * self.G.rendering_kwargs['box_warp']
-        #     all_coordinates = torch.cat([initial_coordinates, perturbed_coordinates], dim=1)
-        #     sigma = self.G.sample_mixed(all_coordinates, torch.randn_like(all_coordinates), ws, update_emas=False)['sigma']
-        #     sigma_initial = sigma[:, :sigma.shape[1]//2]
-        #     sigma_perturbed = sigma[:, sigma.shape[1]//2:]
-        #
-        #     TVloss = torch.nn.functional.l1_loss(sigma_initial, sigma_perturbed) * self.G.rendering_kwargs['density_reg']
-        #     TVloss.mul(gain).backward()
-        #
-        # # Alternative density regularization
-        # if phase in ['Greg', 'Gboth'] and self.G.rendering_kwargs.get('density_reg', 0) > 0 and self.G.rendering_kwargs['reg_type'] == 'monotonic-fixed':
-        #     if swapping_prob is not None:
-        #         c_swapped = torch.roll(gen_c.clone(), 1, 0)
-        #         c_gen_conditioning = torch.where(torch.rand([], device=gen_c.device) < swapping_prob, c_swapped, gen_c)
-        #     else:
-        #         c_gen_conditioning = torch.zeros_like(gen_c)
-        #
-        #     ws = self.G.mapping(gen_z, c_gen_conditioning, update_emas=False)
-        #
-        #     initial_coordinates = torch.rand((ws.shape[0], 2000, 3), device=ws.device) * 2 - 1 # Front
-        #
-        #     perturbed_coordinates = initial_coordinates + torch.tensor([0, 0, -1], device=ws.device) * (1/256) * self.G.rendering_kwargs['box_warp'] # Behind
-        #     all_coordinates = torch.cat([initial_coordinates, perturbed_coordinates], dim=1)
-        #     sigma = self.G.sample_mixed(all_coordinates, torch.randn_like(all_coordinates), ws, update_emas=False)['sigma']
-        #     sigma_initial = sigma[:, :sigma.shape[1]//2]
-        #     sigma_perturbed = sigma[:, sigma.shape[1]//2:]
-        #
-        #     monotonic_loss = torch.relu(sigma_initial - sigma_perturbed).mean() * 10
-        #     monotonic_loss.mul(gain).backward()
-        #
-        #
-        #     if swapping_prob is not None:
-        #         c_swapped = torch.roll(gen_c.clone(), 1, 0)
-        #         c_gen_conditioning = torch.where(torch.rand([], device=gen_c.device) < swapping_prob, c_swapped, gen_c)
-        #     else:
-        #         c_gen_conditioning = torch.zeros_like(gen_c)
-        #
-        #     ws = self.G.mapping(gen_z, c_gen_conditioning, update_emas=False)
-        #     if self.style_mixing_prob > 0:
-        #         with torch.autograd.profiler.record_function('style_mixing'):
-        #             cutoff = torch.empty([], dtype=torch.int64, device=ws.device).random_(1, ws.shape[1])
-        #             cutoff = torch.where(torch.rand([], device=ws.device) < self.style_mixing_prob, cutoff, torch.full_like(cutoff, ws.shape[1]))
-        #             ws[:, cutoff:] = self.G.mapping(torch.randn_like(z), c, update_emas=False)[:, cutoff:]
-        #     initial_coordinates = torch.rand((ws.shape[0], 1000, 3), device=ws.device) * 2 - 1
-        #     perturbed_coordinates = initial_coordinates + torch.randn_like(initial_coordinates) * (1/256) * self.G.rendering_kwargs['box_warp']
-        #     all_coordinates = torch.cat([initial_coordinates, perturbed_coordinates], dim=1)
-        #     sigma = self.G.sample_mixed(all_coordinates, torch.randn_like(all_coordinates), ws, update_emas=False)['sigma']
-        #     sigma_initial = sigma[:, :sigma.shape[1]//2]
-        #     sigma_perturbed = sigma[:, sigma.shape[1]//2:]
-        #
-        #     TVloss = torch.nn.functional.l1_loss(sigma_initial, sigma_perturbed) * self.G.rendering_kwargs['density_reg']
-        #     TVloss.mul(gain).backward()
+            d_fix_norm_rec = False
+            d_trn_norm_rec = False
+            for name, d_params in self.D.named_parameters():
+                if name.find('feature_networks') > 0:  # part of feature network
+                    if not d_fix_norm_rec:  # report if not recorded yet
+                        d_fix_norm_rec = True
+                        training_stats.report(f'D/params/fixed_layer/{name}', d_params.norm(2))
+                else:
+                    if not d_trn_norm_rec:  # report if not recorded yet
+                        d_trn_norm_rec = True
+                        training_stats.report(f'D/params/trainable_layer/{name}', d_params.norm(2))
+
+                if d_fix_norm_rec and d_trn_norm_rec:    # if both recorded stop iterating
+                    break
 
         # Dmain: Minimize logits for generated images.
         loss_Dgen = 0
