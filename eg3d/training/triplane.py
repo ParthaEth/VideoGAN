@@ -14,7 +14,7 @@ import torchvision.transforms
 from torch_utils import persistence
 from training.networks_stylegan2 import Generator as StyleGAN2Backbone
 # from training.networks_stylegan_xl import UnifiedGenerator as StyleGANXLBackbone
-from training.stylegan_t.generator import Generator as StyleGANTBackbone
+from training.stylegan_t.generator import WrapperStyleGANXLLike as StyleGANTBackbone
 from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
 # from training.volumetric_rendering.ray_sampler import RaySampler
 import dnnlib
@@ -63,7 +63,7 @@ class TriPlaneGenerator(torch.nn.Module):
         #                                    img_channels=self.appearance_features + self.motion_features,
         #                                    mapping_kwargs=mapping_kwargs, path_stem=path_stem, head_layers=head_layers,
         #                                    up_factor=up_factor, **synthesis_kwargs)
-        self.backbone = StyleGANTBackbone(z_dim, img_resolution=blur_to_res[data_blur_sigma],
+        self.backbone = StyleGANTBackbone(z_dim, c_dim=c_dim, w_dim=w_dim, img_resolution=blur_to_res[data_blur_sigma],
                                           img_channels=self.appearance_features + self.motion_features,
                                           conditional=False, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(

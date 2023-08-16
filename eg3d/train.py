@@ -251,7 +251,7 @@ def main(**kwargs):
     # Initialize config.
     opts = dnnlib.EasyDict(kwargs) # Command line arguments.
     c = dnnlib.EasyDict() # Main config dict.
-    c.G_kwargs = dnnlib.EasyDict(class_name=None, z_dim=64, w_dim=512, return_video=opts.return_video,
+    c.G_kwargs = dnnlib.EasyDict(class_name=None, z_dim=512, w_dim=512, return_video=opts.return_video,
                                  mapping_kwargs=dnnlib.EasyDict(), path_stem=opts.path_stem,
                                  head_layers=opts.head_layers, data_blur_sigma=opts.blur_sigma,
                                  up_factor=opts.up_factor)

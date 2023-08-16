@@ -470,7 +470,7 @@ class SynthesisNetwork(torch.nn.Module):
                 self.num_ws += block.num_torgb
             setattr(self, f'b{res}', block)
 
-    def forward(self, ws: torch.Tensor, **block_kwargs) -> torch.Tensor:
+    def forward(self, ws: torch.Tensor, update_emas, **block_kwargs) -> torch.Tensor:
         block_ws = []
         with torch.autograd.profiler.record_function('split_ws'):
             ws = ws.to(torch.float32)
@@ -526,6 +526,8 @@ class MappingNetwork(torch.nn.Module):
         z: torch.Tensor,
         c: Union[None, torch.Tensor, list[str]],
         truncation_psi: float = 1.0,
+        update_emas=None,
+        truncation_cutoff=None
     ) -> torch.Tensor:
         misc.assert_shape(z, [None, self.z_dim])
 
@@ -595,8 +597,36 @@ class Generator(torch.nn.Module):
         self,
         z: torch.Tensor,
         c: Union[None, torch.Tensor, list[str]],
+        update_emas=None,
         truncation_psi: float = 1.0, **synthesis_kwargs
     ) -> torch.Tensor:
         ws = self.mapping(z, c, truncation_psi=truncation_psi)
         img = self.synthesis(ws, **synthesis_kwargs)
         return img
+
+
+class WrapperStyleGANXLLike(torch.nn.Module):
+    def __init__(self,
+        z_dim,                      # Input latent (Z) dimensionality.
+        c_dim,                      # Conditioning label (C) dimensionality.
+        w_dim,                      # Intermediate latent (W) dimensionality.
+        img_resolution,             # Output resolution.
+        img_channels,               # Number of output color channels.
+        conditional      = False,   # Arguments for MappingNetwork.
+        **synthesis_kwargs,         # Arguments for SynthesisNetwork.
+    ):
+        super().__init__()
+        # import ipdb; ipdb.set_trace()
+        self.z_dim = z_dim
+        self.c_dim = c_dim
+        self.w_dim = w_dim
+        self.generator = Generator(z_dim, img_resolution=img_resolution,
+                                          img_channels=img_channels,
+                                          conditional=conditional, **synthesis_kwargs)
+
+        self.mapping = self.generator.mapping
+        self.synthesis = self.generator.synthesis
+
+    def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
+        return self.generator(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
+                              update_emas=update_emas, **synthesis_kwargs)
