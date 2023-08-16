@@ -37,7 +37,7 @@ input_vid_res = 3, 256, 256, 256
 motion_features = 9
 appearance_feat = 9
 tri_plane_res = appearance_feat + motion_features, 64, 64
-over_fit = False  # True
+over_fit = True
 dataset_dir = '/is/cluster/fast/pghosh/datasets/ffhq_X_celebv_hq_1_motions'
 out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
 restore_from = None  # '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/enc_rend_and_dec_best.pth'
@@ -102,7 +102,7 @@ for i in pbar:
     losses.append(loss.item())
     psnr_lr = 10 * np.log10(4 / np.mean(losses[-10:]))
     if best_psnr < psnr_lr:
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
         best_psnr = psnr_lr
         torch.save({'renderer': renderer.state_dict(), 'decoder': decoder.state_dict(),
                     'encoder': encoder.state_dict()},

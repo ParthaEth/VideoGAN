@@ -218,6 +218,7 @@ class SynthesisInput(torch.nn.Module):
 
         # Draw random frequencies from uniform 2D disc.
         freqs = torch.randn([self.channels, 2])
+        # import ipdb; ipdb.set_trace()
         radii = freqs.square().sum(dim=1, keepdim=True).sqrt()
         freqs /= radii * radii.square().exp().pow(0.25)
         freqs *= bandwidth

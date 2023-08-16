@@ -36,4 +36,5 @@ dependencies:
     - mrcfile
     - tensorboard
     - torchvision==1.11.0
+    - timm==0.5.4
     - imageio[pyav]
