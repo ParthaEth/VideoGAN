@@ -21,8 +21,8 @@ from torch.nn.parameter import Parameter
 
 from torch_utils import misc
 from torch_utils.ops import upfirdn2d, conv2d_resample, bias_act, fma
-from networks.shared import FullyConnectedLayer, MLP
-from networks.clip import CLIP
+from .shared import FullyConnectedLayer, MLP
+# from .clip import CLIP
 
 
 def is_list_of_strings(arr: Any) -> bool:
@@ -564,7 +564,7 @@ class Generator(torch.nn.Module):
         img_resolution: int,         # Output image resolution.
         img_channels: int = 3,       # Number of output color channels.
         train_mode: str = 'all',     # Control which layers are trainable.
-        synthesis_kwargs: dict = {},
+        **synthesis_kwargs,
     ):
         super().__init__()
         self.z_dim = z_dim

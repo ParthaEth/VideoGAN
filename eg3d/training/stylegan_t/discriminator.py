@@ -21,9 +21,9 @@ import timm
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 from torch_utils import misc
-from networks.shared import ResidualBlock, FullyConnectedLayer
-from networks.vit_utils import make_vit_backbone, forward_vit
-from training.diffaug import DiffAugment
+from .shared import ResidualBlock, FullyConnectedLayer
+from .vit_utils import make_vit_backbone, forward_vit
+from .diffaug import DiffAugment
 
 
 class SpectralConv1d(nn.Conv1d):

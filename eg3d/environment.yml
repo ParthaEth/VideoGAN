@@ -37,4 +37,5 @@ dependencies:
     - tensorboard
     - torchvision==1.11.0
     - timm==0.5.4
+    - open_clip_torch==2.20.0
     - imageio[pyav]
