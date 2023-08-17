@@ -17,7 +17,8 @@ from torch_utils import persistence
 from torch_utils.ops import upfirdn2d
 from training.networks_stylegan2 import DiscriminatorBlock, MappingNetwork, DiscriminatorEpilogue
 from training.video_discriminator import VideoDiscriminator
-from training.pg_modules.discriminator import ProjectedDiscriminator
+# from training.pg_modules.discriminator import ProjectedDiscriminator
+from training.stylegan_t.discriminator import ProjectedDiscriminator as DinoDiscriminator
 import dnnlib
 
 
@@ -203,11 +204,12 @@ class DualPeepDicriminator(torch.nn.Module):
         #                                             channel_base, channel_max, num_fp16_res, conv_clamp,
         #                                             cmap_dim, disc_c_noise, block_kwargs, mapping_kwargs,
         #                                             epilogue_kwargs)
-        self.image_pair_discrim = ProjectedDiscriminator(
-            backbones=['deit_base_distilled_patch16_224', 'tf_efficientnet_lite0'],
-            # backbones=['tf_efficientnet_lite0'],
-            diffaug=True, interp224=False,
-            backbone_kwargs=dnnlib.EasyDict(),)
+        # self.image_pair_discrim = ProjectedDiscriminator(
+        #     backbones=['deit_base_distilled_patch16_224', 'tf_efficientnet_lite0'],
+        #     # backbones=['tf_efficientnet_lite0'],
+        #     diffaug=True, interp224=False,
+        #     backbone_kwargs=dnnlib.EasyDict(),)
+        self.image_pair_discrim = DinoDiscriminator(c_dim=0,)
         video_color_channels = 256  # video frame chnannels
         video_resolution = img_resolution//8
         self.vid_discrim = VideoDiscriminator(seq_length=time_steps, max_edge=32, channels=5, cmap_dim=c_dim)

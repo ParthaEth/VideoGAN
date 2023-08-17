@@ -138,7 +138,7 @@ class ProjectedDiscriminator(nn.Module):
 
         heads = []
         for i in range(self.dino.n_hooks):
-            heads += [str(i), DiscHead(self.dino.embed_dim, c_dim)],
+            heads += [str(i), DiscHead(self.dino.embed_dim * 2, c_dim)],  # *2 because lowres and high res images
         self.heads = nn.ModuleDict(heads)
 
     def train(self, mode: bool = True):
@@ -149,7 +149,7 @@ class ProjectedDiscriminator(nn.Module):
     def eval(self):
         return self.train(False)
 
-    def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, c: torch.Tensor, update_emas=None, **block_kwargs) -> torch.Tensor:
         # Apply augmentation (x in [-1, 1]).
         if self.diffaug:
             x = DiffAugment(x, policy='color,translation,cutout')
@@ -162,7 +162,12 @@ class ProjectedDiscriminator(nn.Module):
             x = RandomCrop(self.dino.img_resolution)(x)
 
         # Forward pass through DINO ViT.
-        features = self.dino(x)
+        features_lr = self.dino(x[:, :3])
+        features_sr = self.dino(x[:, 3:])
+        # import ipdb; ipdb.set_trace()
+        features = {}
+        for feature_level in features_sr:
+            features[feature_level] = torch.cat((features_sr[feature_level], features_lr[feature_level]), dim=1)
 
         # Apply discriminator heads.
         logits = []

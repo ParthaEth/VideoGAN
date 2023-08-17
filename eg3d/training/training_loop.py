@@ -303,7 +303,8 @@ def training_loop(
                 opt_params = []
                 total_trainable = 0
                 for layer_name, d_opt_params in discriminator.named_parameters():
-                    if layer_name.find('feature_networks') < 0:  # if not part of feature extraction network
+                    # optimizable params only if not part of feature net and not dino
+                    if layer_name.find('feature_networks') < 0 and layer_name.find('dino') < 0:
                         opt_params.append(d_opt_params)
                         total_trainable += np.prod(d_opt_params.shape)
                 opt = dnnlib.util.construct_class_by_name(opt_params, **opt_kwargs)  # subclass of torch.optim.Optimizer
@@ -391,8 +392,11 @@ def training_loop(
             phase.module.requires_grad_(True)
 
             ### PROJECTED GAN ADDITIONS ### Disabling grad computation for the feature net
-            if phase.name in ['Dmain', 'Dboth', 'Dreg'] and hasattr(phase.module.image_pair_discrim, 'feature_networks'):
-                phase.module.image_pair_discrim.feature_networks.requires_grad_(False)
+            if phase.name in ['Dmain', 'Dboth', 'Dreg']:
+                if hasattr(phase.module.image_pair_discrim, 'feature_networks'):
+                    phase.module.image_pair_discrim.feature_networks.requires_grad_(False)
+                if hasattr(phase.module.image_pair_discrim, 'dino'):
+                    phase.module.image_pair_discrim.dino.requires_grad_(False)
 
             num_iter = 0
             for real_img, peep_vid_real, real_c, gen_z, gen_c in zip(phase_real_img, phase_peep_vid_real, phase_real_c, phase_gen_z, phase_gen_c):
