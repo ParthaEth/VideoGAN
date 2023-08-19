@@ -286,7 +286,17 @@ def training_loop(
                     backbone_params = []
                     for g_layer_name in module.backbone.synthesis.layer_names:
                         if g_layer_name in module.backbone.generator.head_layer_names:
-                            backbone_params += [params for params in getattr(module.backbone.synthesis, g_layer_name).parameters()]
+                            backbone_params += [params for params in
+                                                getattr(module.backbone.synthesis, g_layer_name).parameters()]
+                elif hasattr(module.backbone.generator, 'train_mode'):
+                    if module.backbone.generator.train_mode == 'freeze64':
+                        backbone_params = []
+                        for param_name, params in module.backbone.generator.named_parameters():
+                            for trainable_layer_name in module.backbone.generator.trainable_layers:
+                                if param_name.find(trainable_layer_name) > 0:
+                                    backbone_params.append(params)
+                    else:
+                        backbone_params = module.backbone.parameters()
                 else:
                     backbone_params = module.backbone.parameters()
                 opt = dnnlib.util.construct_class_by_name(

@@ -22,6 +22,8 @@ from torch.nn.parameter import Parameter
 from torch_utils import misc
 from torch_utils.ops import upfirdn2d, conv2d_resample, bias_act, fma
 from .shared import FullyConnectedLayer, MLP
+import dnnlib
+import legacy
 # from .clip import CLIP
 
 
@@ -613,19 +615,36 @@ class WrapperStyleGANXLLike(torch.nn.Module):
         img_resolution,             # Output resolution.
         img_channels,               # Number of output color channels.
         conditional      = False,   # Arguments for MappingNetwork.
+        path_stem        = None,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
-        # import ipdb; ipdb.set_trace()
         self.z_dim = z_dim
         self.c_dim = c_dim
         self.w_dim = w_dim
+        train_mode = 'all'
+        if img_resolution > 64:
+            train_mode = 'freeze64'
+            assert path_stem is not None
         self.generator = Generator(z_dim, img_resolution=img_resolution,
-                                          img_channels=img_channels,
-                                          conditional=conditional, **synthesis_kwargs)
+                                   img_channels=img_channels, train_mode=train_mode,
+                                   conditional=conditional, **synthesis_kwargs)
 
         self.mapping = self.generator.mapping
         self.synthesis = self.generator.synthesis
+
+        if path_stem is not None:
+            self.load_stem(path_stem)
+
+    def load_stem(self, path_stem):
+        with torch.no_grad():
+            with dnnlib.util.open_url(path_stem) as f:
+                G_stem = legacy.load_network_pkl(f)['G_ema']
+
+            misc.copy_params_and_buffers(G_stem.backbone.synthesis, self.synthesis, require_all=False)
+            # mapping reinit
+            misc.copy_params_and_buffers(G_stem.backbone.mapping, self.mapping, require_all=False)
+            print(f'Stem loaded from: {path_stem}')
 
     def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
         return self.generator(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff,
