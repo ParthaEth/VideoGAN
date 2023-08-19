@@ -164,7 +164,7 @@ class StyleGAN2Loss(Loss):
                 loss_Gmain.mean().mul(gain).backward()
 
             # import ipdb;ipdb.set_trace()
-            if hasattr(self.G.backbone.generator, 'head_layer_names'):
+            if hasattr(self.G.backbone.generator, 'head_layer_names'): # StyleGANXL
                 g_fixed_norm_rec = False
                 for name in self.G.backbone.synthesis.layer_names:
                     if name not in self.G.backbone.generator.head_layer_names and not g_fixed_norm_rec:  # not in head layer => fixed params
@@ -176,12 +176,26 @@ class StyleGAN2Loss(Loss):
                         training_stats.report(f'G/params/trainable_layer/{name}', next(g_var_param).norm(2))
                         if g_fixed_norm_rec:
                             break
+            elif hasattr(self.G.backbone.generator, 'train_mode'):  # StyleGAN-T
+                g_fixed_norm_rec = False
+                g_trainable_norm_rec = False
+                for param_name, params in self.G.backbone.generator.named_parameters():
+                    for trainable_layer_name in self.G.backbone.generator.trainable_layers:
+                        if param_name.find(trainable_layer_name) > 0:
+                            training_stats.report(f'G/params/trainable_layer/{param_name}', next(params).norm(2))
+                            g_fixed_norm_rec = True
+                        else:
+                            training_stats.report(f'G/params/fixed_layer/{param_name}', next(params).norm(2))
+                            g_trainable_norm_rec = True
+                    if g_trainable_norm_rec and g_fixed_norm_rec:
+                        break
+
             # import ipdb; ipdb.set_trace()
 
             d_fix_norm_rec = False
             d_trn_norm_rec = False
             for name, d_params in self.D.named_parameters():
-                if name.find('feature_networks') > 0:  # part of feature network
+                if name.find('feature_networks') > 0 or name.find('dino') > 0:  # part of feature network
                     if not d_fix_norm_rec:  # report if not recorded yet
                         d_fix_norm_rec = True
                         training_stats.report(f'D/params/fixed_layer/{name}', d_params.norm(2))
