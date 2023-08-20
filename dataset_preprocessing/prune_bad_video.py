@@ -9,7 +9,8 @@ parser.add_argument("--pid", type=int, help="path to config")
 args = parser.parse_args()
 
 # src_dir = '/is/cluster/fast/pghosh/datasets/eg3d_generated_0.5'
-src_dir = '/is/cluster/fast/pghosh/datasets/ffhq_X_few_good_talking_motion_3_motions'
+# src_dir = '/is/cluster/fast/pghosh/datasets/ffhq_X_few_good_talking_motion_3_motions'
+src_dir = '/is/cluster/fast/pghosh/datasets/fashion_ivd_first_order_motion'
 # src_dir = '/dev/shm/eg3d_generated_0.5'
 n_files_per_proces = 100
 files_this_process = sorted(os.listdir(src_dir))
