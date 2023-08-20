@@ -262,7 +262,7 @@ def main(**kwargs):
                                      renderer_lr_mult=opts.renderer_lr_mult)
     c.D_opt_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', betas=[0,0.99], eps=1e-8)
     c.loss_kwargs = dnnlib.EasyDict(class_name='training.loss.StyleGAN2Loss')
-    c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=False, prefetch_factor=2)
+    c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=False, prefetch_factor=None)
 
     # Training set.
     c.training_set_kwargs, dataset_name = init_dataset_kwargs(

@@ -74,7 +74,8 @@ class Dataset(torch.utils.data.Dataset):
             if self._raw_labels is None:
                 self._raw_labels = np.zeros([self._raw_shape[0], 0], dtype=np.float32)
             assert isinstance(self._raw_labels, np.ndarray)
-            assert self._raw_labels.shape[0] == self._raw_shape[0]
+            assert self._raw_labels.shape[0] == self._raw_shape[0], \
+                f'self._raw_labels.shape[0]: {self._raw_labels.shape[0]} and self._raw_shape[0]: {self._raw_shape[0]}'
             assert self._raw_labels.dtype in [np.float32, np.int64]
             if self._raw_labels.dtype == np.int64:
                 assert self._raw_labels.ndim == 1
@@ -234,7 +235,6 @@ class VideoFolderDataset(Dataset):
 
         name = os.path.splitext(os.path.basename(self._path))[0]
         raw_shape = [len(self._video_fnames)] + list(self._load_raw_image(0, skip_cache=True)[0].shape)
-        # import ipdb; ipdb.set_trace()
         if raw_shape[1] != 3 and VideoFolderDataset.warning_displayed <= max_warnings:
             VideoFolderDataset.warning_displayed += 1
             print(f'\n\n\n\n\n\n\n\n\nWARNING{self.warning_displayed}: Generator cannot generate other than 3 color '
@@ -377,7 +377,7 @@ class VideoFolderDataset(Dataset):
 
         labels[:, 3] = frame_location
 
-        return labels
+        return labels.astype(np.float32)
 
     def get_from_cached(self, fname):
         if self.cache_dir is None:
