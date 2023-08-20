@@ -182,10 +182,10 @@ class StyleGAN2Loss(Loss):
                 for param_name, params in self.G.backbone.generator.named_parameters():
                     for trainable_layer_name in self.G.backbone.generator.trainable_layers:
                         if param_name.find(trainable_layer_name) > 0:
-                            training_stats.report(f'G/params/trainable_layer/{param_name}', next(params).norm(2))
+                            training_stats.report(f'G/params/trainable_layer/{param_name}', params.norm(2))
                             g_fixed_norm_rec = True
                         else:
-                            training_stats.report(f'G/params/fixed_layer/{param_name}', next(params).norm(2))
+                            training_stats.report(f'G/params/fixed_layer/{param_name}', params.norm(2))
                             g_trainable_norm_rec = True
                     if g_trainable_norm_rec and g_fixed_norm_rec:
                         break
