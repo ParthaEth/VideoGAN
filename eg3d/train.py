@@ -223,6 +223,7 @@ def parse_comma_separated_list(s):
 @click.option('--head_layers',  help='Layers of added superresolution head.', type=click.IntRange(min=1), default=None, show_default=True)
 @click.option('--up_factor',  help='Up the latent code resolution by this factor from stem', type=click.IntRange(min=2), default=None, show_default=True)
 @click.option('--blur_sigma',   help='Blur the true data so we can train a low latent res model first', metavar='INT', type=click.FloatRange(min=0), required=True)
+@click.option('--apply_crop',   help='apply left and right cop to avoid sharp edges for fashion data', metavar='BOOL', type=bool, required=True, default=False)
 
 
 def main(**kwargs):
@@ -313,6 +314,7 @@ def main(**kwargs):
     c.D_kwargs.class_name = f'training.dual_discriminator.{opts.discrim_type}'
     # c.G_kwargs.fused_modconv_default = 'inference_only' # Speed up training by using regular convolutions instead of grouped convolutions.
     c.loss_kwargs.filter_mode = 'antialiased' # Filter mode for raw images ['antialiased', 'none', float [0-1]]
+    c.loss_kwargs.apply_crop = opts.apply_crop # if right and left border would be made white
     c.D_kwargs.disc_c_noise = opts.disc_c_noise # Regularization for discriminator pose conditioning
 
     if c.training_set_kwargs.resolution == 512:

@@ -31,7 +31,8 @@ class StyleGAN2Loss(Loss):
                  pl_batch_shrink=2, pl_decay=0.01, pl_no_weight_grad=False, blur_init_sigma=0, blur_fade_kimg=0,
                  r1_gamma_init=0, r1_gamma_fade_kimg=0, neural_rendering_resolution_initial=64,
                  neural_rendering_resolution_final=None, neural_rendering_resolution_fade_kimg=0,
-                 gpc_reg_fade_kimg=1000, gpc_reg_prob=None, dual_discrimination=False, filter_mode='antialiased'):
+                 gpc_reg_fade_kimg=1000, gpc_reg_prob=None, dual_discrimination=False, filter_mode='antialiased',
+                 apply_crop=False):
         super().__init__()
         self.device             = device
         self.G                  = G
@@ -57,6 +58,7 @@ class StyleGAN2Loss(Loss):
         self.filter_mode = filter_mode
         self.resample_filter = upfirdn2d.setup_filter([1,3,3,1], device=device)
         self.blur_raw_target = True
+        self.apply_crop = apply_crop
         assert self.gpc_reg_prob is None or (0 <= self.gpc_reg_prob <= 1)
 
     def run_G(self, z, c, swapping_prob, neural_rendering_resolution, update_emas=False):
@@ -83,12 +85,24 @@ class StyleGAN2Loss(Loss):
                 f = torch.arange(-blur_size, blur_size + 1, device=img['image'].device).div(blur_sigma).square().neg().exp2()
                 img['image'] = upfirdn2d.filter2d(img['image'], f / f.sum())
 
+        if self.apply_crop:
+            b_size, ch, img_w, img_h = img['image'].shape
+            b_size, ch, vid_w, vid_h = img['peep_vid'].shape
+            img['image'][:, :, :, :35] = img['image'][:, :, :, :35] * 0 + 1  # make left border white
+            img['image'][:, :, :, 220:] = img['image'][:, :, :, 220:] * 0 + 1  # make right border white
+
+            img['peep_vid'][:, :, :, :int(35 * vid_w/img_w), :] = img['peep_vid'][:, :, :, :int(35 * vid_w/img_w), :] * 0 + 1 # make left border white
+            img['peep_vid'][:, :, :, int(220 * vid_w/img_w):, :] = img['peep_vid'][:, :, :, int(220 * vid_w/img_w):, :] * 0 + 1  # make right border white
+
         if self.augment_pipe is not None:
-            augmented_pair = self.augment_pipe(torch.cat([img['image'],
-                                                    torch.nn.functional.interpolate(img['image_raw'], size=img['image'].shape[2:], mode='bilinear', antialias=True)],
-                                                    dim=1))
+            augmented_pair = self.augment_pipe(
+                torch.cat([img['image'],
+                torch.nn.functional.interpolate(img['image_raw'], size=img['image'].shape[2:], mode='bilinear',
+                                                antialias=True)],dim=1))
             img['image'] = augmented_pair[:, :img['image'].shape[1]]
-            img['image_raw'] = torch.nn.functional.interpolate(augmented_pair[:, img['image'].shape[1]:], size=img['image_raw'].shape[2:], mode='bilinear', antialias=True)
+            img['image_raw'] = torch.nn.functional.interpolate(
+                augmented_pair[:, img['image'].shape[1]:], size=img['image_raw'].shape[2:], mode='bilinear',
+                antialias=True)
 
             # run augmentation on the video
             b, chn, h, w, d = img['peep_vid'].shape

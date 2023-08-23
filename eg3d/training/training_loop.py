@@ -77,15 +77,22 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 
 #----------------------------------------------------------------------------
 
+
 def write_caption_to_image(image, coordinates_hw, captions, font_size):
     font = ImageFont.truetype(font='/usr/share/fonts/truetype/freefont/FreeMono.ttf',
                               size=font_size)
     for i in range(len(captions)):
         ImageDraw.Draw(image).text(coordinates_hw[i], captions[i], (255, 255, 255), font=font)
 
+
 def save_image_grid(img, fname, drange, grid_size, labels=None):
     lo, hi = drange
     img = np.asarray(img, dtype=np.float32)
+
+    # import ipdb; ipdb.set_trace()
+    # img[:, :, :, :35] = img[:, :, :, :35] * 0 + 255  # make left border white
+    # img[:, :, :, 220:] = img[:, :, :, 220:] * 0 + 255  # make right border white
+
     img = (img - lo) * (255 / (hi - lo))
     img = np.rint(img).clip(0, 255).astype(np.uint8)
     img[:, :, :, :2] = 255
@@ -118,6 +125,7 @@ def save_image_grid(img, fname, drange, grid_size, labels=None):
         write_caption_to_image(img, coordinates_hw, captions, font_size=int((60/256)*H))
 
     img.save(fname)
+
 
 def save_video_grid(video, fname, drange, grid_size, labels=None):
     lo, hi = drange
