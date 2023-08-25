@@ -119,12 +119,12 @@ def launch_training(c, desc, outdir, dry_run):
 #----------------------------------------------------------------------------
 
 
-def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames, time_steps, blur_sigma):
+def init_dataset_kwargs(data, return_video, cache_dir, fixed_time_frames, time_steps, blur_sigma, apply_crop):
     try:
         dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data, use_labels=True,
                                          max_size=None, xflip=False, return_video=return_video, cache_dir=cache_dir,
                                          fixed_time_frames=fixed_time_frames, time_steps=time_steps,
-                                         blur_sigma=blur_sigma)
+                                         blur_sigma=blur_sigma, apply_crop=apply_crop)
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # Subclass of training.dataset.Dataset.
         dataset_kwargs.resolution = dataset_obj.resolution # Be explicit about resolution.
         dataset_kwargs.use_labels = dataset_obj.has_labels # Be explicit about labels.
@@ -268,7 +268,8 @@ def main(**kwargs):
     # Training set.
     c.training_set_kwargs, dataset_name = init_dataset_kwargs(
         data=opts.data, return_video=opts.return_video, cache_dir=opts.d_set_cache_dir,
-        fixed_time_frames=opts.fixed_time_frames, time_steps=opts.time_steps, blur_sigma=opts.blur_sigma)
+        fixed_time_frames=opts.fixed_time_frames, time_steps=opts.time_steps, blur_sigma=opts.blur_sigma,
+        apply_crop=opts.apply_crop)
     if opts.cond and not c.training_set_kwargs.use_labels:
         raise click.ClickException('--cond=True requires labels specified in dataset.json')
     c.training_set_kwargs.use_labels = opts.cond
@@ -283,6 +284,7 @@ def main(**kwargs):
     c.G_kwargs.channel_base = opts.cbase
     c.D_kwargs.channel_base = 32768
     c.G_kwargs.channel_max = opts.cmax
+    c.G_kwargs.apply_crop = opts.apply_crop
     c.D_kwargs.channel_max = 512
     c.G_kwargs.mapping_kwargs.num_layers = opts.map_depth
     c.D_kwargs.block_kwargs.freeze_layers = opts.freezed

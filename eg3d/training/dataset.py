@@ -206,8 +206,10 @@ class VideoFolderDataset(Dataset):
         return_video    = False,
         time_steps = 32,        # how many time steps of the video to take
         blur_sigma=0,
+        apply_crop=False,
         **super_kwargs,         # Additional arguments for the Dataset base class.
     ):
+        self.apply_crop = apply_crop
         self.time_steps = time_steps
         self._path = path
         self._zipfile = None
@@ -294,7 +296,7 @@ class VideoFolderDataset(Dataset):
             fname = os.path.basename(fname)
             vid_vol = self.get_from_cached(fname)
             if vid_vol is None:
-                # print(f'Cache miss! {fname}')
+                # print(f'Cache miss! {fname}') 
                 self.write_to_cache(fname)
                 vid_vol = self.get_from_cached(fname)
 
@@ -309,6 +311,10 @@ class VideoFolderDataset(Dataset):
             vid_vol[:, :, :, t] = gaussian_filter(vid_vol[:, :, :, t].transpose(1, 2, 0),
                                                   sigma=(self.blur_sigma, self.blur_sigma),
                                                   axes=(0, 1)).transpose(2, 0, 1)
+
+        if self.apply_crop:
+            vid_vol[:, :, :35, :] = 255
+            vid_vol[:, :, 220:, :] = 255
 
         _, _, resolution, _ = vid_vol.shape
 

@@ -60,6 +60,9 @@ class StyleGAN2Loss(Loss):
         self.blur_raw_target = True
         self.apply_crop = apply_crop
         assert self.gpc_reg_prob is None or (0 <= self.gpc_reg_prob <= 1)
+        if self.apply_crop:
+            self.vid_max = None
+            self.img_mask = None
 
     def run_G(self, z, c, swapping_prob, neural_rendering_resolution, update_emas=False):
         if swapping_prob is not None:
@@ -84,15 +87,6 @@ class StyleGAN2Loss(Loss):
             with torch.autograd.profiler.record_function('blur'):
                 f = torch.arange(-blur_size, blur_size + 1, device=img['image'].device).div(blur_sigma).square().neg().exp2()
                 img['image'] = upfirdn2d.filter2d(img['image'], f / f.sum())
-
-        if self.apply_crop:
-            b_size, ch, img_w, img_h = img['image'].shape
-            b_size, ch, vid_w, vid_h = img['peep_vid'].shape
-            img['image'][:, :, :, :35] = img['image'][:, :, :, :35] * 0 + 1  # make left border white
-            img['image'][:, :, :, 220:] = img['image'][:, :, :, 220:] * 0 + 1  # make right border white
-
-            img['peep_vid'][:, :, :, :int(35 * vid_w/img_w), :] = img['peep_vid'][:, :, :, :int(35 * vid_w/img_w), :] * 0 + 1 # make left border white
-            img['peep_vid'][:, :, :, int(220 * vid_w/img_w):, :] = img['peep_vid'][:, :, :, int(220 * vid_w/img_w):, :] * 0 + 1  # make right border white
 
         if self.augment_pipe is not None:
             augmented_pair = self.augment_pipe(

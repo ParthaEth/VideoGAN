@@ -36,9 +36,12 @@ class TriPlaneGenerator(torch.nn.Module):
         head_layers = None,         # How many head layers to add on top of the stem
         up_factor = None,           # What is the resolution up factor at this super res scale
         data_blur_sigma = None,
+        apply_crop=False,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
+        self.apply_crop = apply_crop
+        self.sr_img_mask = None
         self.z_dim=z_dim
         self.c_dim=c_dim
         self.w_dim=w_dim
@@ -168,6 +171,32 @@ class TriPlaneGenerator(torch.nn.Module):
 
         # sr_image = rgb_image
         # rgb_image = self.downscale4x(sr_image)
+
+        if self.apply_crop:
+            if self.sr_img_mask is None:
+                with torch.no_grad():
+                    b_size, ch, img_w_sr, img_h_sr = sr_image.shape
+                    b_size, ch, img_w_lr, img_h_lr = rgb_image.shape
+                    b_size, ch, vid_w, vid_h, vid_t = peep_video.shape
+
+                    self.sr_img_mask = torch.ones((1, ch, img_w_sr, img_h_sr), dtype=sr_image.dtype,
+                                                  device=sr_image.device)
+                    self.sr_img_mask[:, :, :, :35] = 0
+                    self.sr_img_mask[:, :, :, 220:] = 0
+
+                    self.lr_img_mask = torch.ones((1, ch, img_w_lr, img_h_lr), dtype=rgb_image.dtype,
+                                                  device=rgb_image.device)
+                    self.lr_img_mask[:, :, :, :int(35 * img_w_lr/img_w_sr)] = 0
+                    self.lr_img_mask[:, :, :, int(220 * img_w_lr/img_w_sr):] = 0
+
+                    self.vid_mask = torch.ones((1, ch, vid_w, vid_h, vid_t), dtype=peep_video.dtype,
+                                               device=peep_video.device)
+                    self.vid_mask[:, :, :, :int(35 * vid_w/img_w_sr), :] = 0
+                    self.vid_mask[:, :, :, int(220 * vid_w/img_w_sr):, :] = 0
+
+            sr_image = sr_image * self.sr_img_mask + 1 - self.sr_img_mask
+            rgb_image = rgb_image * self.lr_img_mask + 1 - self.lr_img_mask
+            peep_video = peep_video * self.vid_mask + 1 - self.vid_mask
 
         return {'image': sr_image, 'image_raw': rgb_image, 'peep_vid': peep_video, 'flows_and_masks': flows_and_masks}
     
