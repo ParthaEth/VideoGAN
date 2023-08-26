@@ -313,8 +313,8 @@ class VideoFolderDataset(Dataset):
                                                   axes=(0, 1)).transpose(2, 0, 1)
 
         if self.apply_crop:
-            vid_vol[:, :, :35, :] = 255
-            vid_vol[:, :, 220:, :] = 255
+            vid_vol[:, :, :45, :] = 255
+            vid_vol[:, :, 210:, :] = 255
 
         _, _, resolution, _ = vid_vol.shape
 

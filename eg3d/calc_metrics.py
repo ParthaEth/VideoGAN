@@ -29,22 +29,20 @@ from torch_utils.ops import conv2d_gradfix
 #----------------------------------------------------------------------------
 
 
-def subprocess_fn(rank, args):
+def subprocess_fn(rank, args, temp_dir):
     dnnlib.util.Logger(should_flush=True)
-    if os.getenv('MASTER_ADDR') is None:
-        print('WARNING: could not find master address, setting it to local machine. if you are using multiple '
-              'machines, this is an error')
-        os.environ['MASTER_ADDR'] = 'localhost'
-
-    if os.getenv('MASTER_PORT') is None:
-        os.environ['MASTER_PORT'] = '3630'
 
     # Init torch.distributed.
     if args.num_gpus > 1:
+        init_file = os.path.abspath(os.path.join(temp_dir, '.torch_distributed_init'))
         if os.name == 'nt':
-            torch.distributed.init_process_group(backend='gloo', rank=rank, world_size=args.num_gpus)
+            init_method = 'file:///' + init_file.replace('\\', '/')
+            torch.distributed.init_process_group(backend='gloo', init_method=init_method, rank=rank,
+                                                 world_size=args.num_gpus)
         else:
-            torch.distributed.init_process_group(backend='nccl', rank=rank, world_size=args.num_gpus)
+            init_method = f'file://{init_file}'
+            torch.distributed.init_process_group(backend='nccl', init_method=init_method, rank=rank,
+                                                 world_size=args.num_gpus)
 
     # Init torch_utils.
     sync_device = torch.device('cuda', rank) if args.num_gpus > 1 else None
@@ -194,10 +192,12 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose)
     if args.verbose:
         print('Launching processes...')
     torch.multiprocessing.set_start_method('spawn')
-    if args.num_gpus == 1:
-        subprocess_fn(rank=0, args=args)
-    else:
-        torch.multiprocessing.spawn(fn=subprocess_fn, args=(args, ), nprocs=args.num_gpus)
+
+    with tempfile.TemporaryDirectory(dir='/dev/shm') as temp_dir:
+        if args.num_gpus == 1:
+            subprocess_fn(rank=0, args=args, temp_dir=temp_dir)
+        else:
+            torch.multiprocessing.spawn(fn=subprocess_fn, args=(args, temp_dir), nprocs=args.num_gpus)
 
 
 #----------------------------------------------------------------------------

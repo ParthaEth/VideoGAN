@@ -181,18 +181,18 @@ class TriPlaneGenerator(torch.nn.Module):
 
                     self.sr_img_mask = torch.ones((1, ch, img_w_sr, img_h_sr), dtype=sr_image.dtype,
                                                   device=sr_image.device)
-                    self.sr_img_mask[:, :, :, :35] = 0
-                    self.sr_img_mask[:, :, :, 220:] = 0
+                    self.sr_img_mask[:, :, :, :45] = 0
+                    self.sr_img_mask[:, :, :, 210:] = 0
 
                     self.lr_img_mask = torch.ones((1, ch, img_w_lr, img_h_lr), dtype=rgb_image.dtype,
                                                   device=rgb_image.device)
-                    self.lr_img_mask[:, :, :, :int(35 * img_w_lr/img_w_sr)] = 0
-                    self.lr_img_mask[:, :, :, int(220 * img_w_lr/img_w_sr):] = 0
+                    self.lr_img_mask[:, :, :, :int(45 * img_w_lr/img_w_sr)] = 0
+                    self.lr_img_mask[:, :, :, int(210 * img_w_lr/img_w_sr):] = 0
 
                     self.vid_mask = torch.ones((1, ch, vid_w, vid_h, vid_t), dtype=peep_video.dtype,
                                                device=peep_video.device)
-                    self.vid_mask[:, :, :, :int(35 * vid_w/img_w_sr), :] = 0
-                    self.vid_mask[:, :, :, int(220 * vid_w/img_w_sr):, :] = 0
+                    self.vid_mask[:, :, :, :int(45 * vid_w/img_w_sr), :] = 0
+                    self.vid_mask[:, :, :, int(210 * vid_w/img_w_sr):, :] = 0
 
             sr_image = sr_image * self.sr_img_mask + 1 - self.sr_img_mask
             rgb_image = rgb_image * self.lr_img_mask + 1 - self.lr_img_mask
