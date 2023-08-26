@@ -124,8 +124,10 @@ def get_identity_flow(rend_res, dtype, device):
 @click.option('--reload_modules', help='Overload persistent modules?', type=bool, required=False, metavar='BOOL', default=False, show_default=True)
 @click.option('--axis', help='Axis perpendicular to which to take the frames', metavar='STR',
               type=click.Choice(['x', 'y', 't']), required=False, default='t')
-@click.option('--img_type', help='Make video of raw images or sr_iamges', metavar='STR',
+@click.option('--img_type', help='Make video of raw images or sr_images', metavar='STR',
               type=click.Choice(['raw', 'sr_image']), required=False, default='sr_image')
+@click.option('--show_flow', help='Just save videos or also flow', metavar='STR',
+              type=bool, required=False, default=True)
 
 def generate_images(
     network_pkl: str,
@@ -140,7 +142,8 @@ def generate_images(
     class_idx: Optional[int],
     reload_modules: bool,
     axis: str,
-    img_type:str,
+    img_type: str,
+    show_flow: bool
 ):
     """Generate images using pretrained network pickle.
 
@@ -235,8 +238,12 @@ def generate_images(
                 # mask 0 implies only local flow used
                 # video_frame = make_grid([local_warped_clmp[0], peep_frame[0], img_batch[i], local_flow[i],
                 #                          global_flow[i], mask[i]], 6, pad_value=255)
-                video_frame = make_grid([local_warped_clmp[0], img_batch[i], local_flow[i],
-                                         global_flow[i], mask[i]], 5, pad_value=255)
+                if show_flow:
+                    video_frame = make_grid([local_warped_clmp[0], img_batch[i], local_flow[i],
+                                             global_flow[i], mask[i]], 5, pad_value=255)
+                else:
+                    video_frame = img_batch[i]
+
                 video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
                 local_warped = torch.nn.functional.grid_sample(
                     local_warped[0:1],  # .permute(0, 1, 3, 2),

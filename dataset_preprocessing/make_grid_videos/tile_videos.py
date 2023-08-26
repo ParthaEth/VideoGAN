@@ -3,21 +3,28 @@ import os
 import imageio
 import numpy as np
 import tqdm
+import random
 
 # source_root = '/is/cluster/fast/pghosh/datasets/ffhq/256X256_zoom_vid'
-source_root = '/home/pghosh/Downloads/videoGeneration/bw_bouncing_sq/all_vids'
+# source_root = '/home/pghosh/Downloads/videoGeneration/bw_bouncing_sq/all_vids'
+# source_root = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/talking_faces_vid'
+source_root = '/is/cluster/fast/pghosh/datasets/ffhq_X_10_good_motions_10_motions'
 # source_root = '/is/cluster/fast/pghosh/datasets/bouncing_sq/ranad_init_vel/vids'
 # outdir = '/is/cluster/fast/pghosh/datasets/ffhq'
-outdir = '/home/pghosh/Downloads/videoGeneration/bw_bouncing_sq/'
+# outdir = '/home/pghosh/Downloads/videoGeneration/bw_bouncing_sq/'
+outdir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/'
 # outdir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/ranad_init_vel'
 st_idx = 0
-tile_width = tile_height = 5
+tile_width = 10
+tile_height = 5
 vid_h = vid_w = vid_frames = 256
+seed = 0
 vid_in_strm = [None] * tile_width * tile_height
 
-video_out = imageio.get_writer(f'{outdir}/seed{st_idx}_{tile_width}_{tile_height}.mp4', mode='I', fps=60,
+video_out = imageio.get_writer(f'{outdir}/seed{seed}_start_{st_idx}_{tile_width}_{tile_height}.mp4', mode='I', fps=60,
                                codec='libx264')
 all_vids = [vid_file for vid_file in sorted(os.listdir(source_root)) if vid_file.endswith('.mp4')]
+random.Random(seed).shuffle(all_vids)
 all_vids = all_vids[st_idx : st_idx + tile_width*tile_height]
 for frm_id in tqdm.tqdm(range(256)):
     frame = np.zeros((vid_h * tile_height, vid_w * tile_width, 3), dtype=np.uint8)

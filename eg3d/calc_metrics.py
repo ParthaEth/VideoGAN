@@ -62,8 +62,8 @@ def subprocess_fn(rank, args, temp_dir):
     else:
         G = copy.deepcopy(args.G).eval().requires_grad_(False).to(device)
         if rank == 0 and args.verbose:
-            z = torch.empty([1, G.z_dim], device=device)
-            c = torch.empty([1, G.c_dim], device=device)
+            z = torch.empty([2, G.z_dim], device=device)
+            c = torch.empty([2, G.c_dim], device=device)
             misc.print_module_summary(G, [z, c])
 
     # Calculate each metric.
@@ -102,8 +102,10 @@ def parse_comma_separated_list(s):
 @click.option('--mirror', help='Enable dataset x-flips  [default: look up]', type=bool, metavar='BOOL')
 @click.option('--gpus', help='Number of GPUs to use', type=int, default=1, metavar='INT', show_default=True)
 @click.option('--verbose', help='Print optional information', type=bool, default=True, metavar='BOOL', show_default=True)
+@click.option('--trunc', 'truncation_psi', type=float, help='Truncation psi', default=1, show_default=True)
 
-def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose):
+
+def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose, truncation_psi):
     """Calculate quality metrics for previous training run or pretrained network pickle.
 
     Examples:
@@ -146,7 +148,7 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose)
 
     # Load network.
     if data_2 is None:
-        args.G_kwargs = {}
+        args.G_kwargs = {'truncation_psi': truncation_psi}
         if not dnnlib.util.is_url(network_pkl, allow_file_urls=True) and not os.path.isfile(network_pkl):
             ctx.fail('--network must point to a file or URL')
         if args.verbose:
