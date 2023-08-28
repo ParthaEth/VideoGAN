@@ -18,6 +18,7 @@ import dnnlib
 
 from . import metric_utils
 from . import frechet_inception_distance
+from . import frechet_video_distance
 from . import kernel_inception_distance
 from . import precision_recall
 from . import perceptual_path_length
@@ -26,7 +27,7 @@ from . import equivariance
 
 #----------------------------------------------------------------------------
 
-_metric_dict = dict() # name => fn
+_metric_dict = dict()  # name => fn
 
 def register_metric(fn):
     assert callable(fn)
@@ -89,6 +90,26 @@ def fid50k_full(opts):
     opts.dataset_kwargs.update(max_size=None, xflip=False)
     fid = frechet_inception_distance.compute_fid(opts, max_real=None, num_gen=50000)
     return dict(fid50k_full=fid)
+
+@register_metric
+def fvd2048_16f(opts):
+    opts.dataset_kwargs.update(max_size=None, xflip=False)
+    fid = frechet_video_distance.compute_fvd(opts, max_real=2048, num_gen=2048, num_frames=16)
+    return dict(fvd2048_16f=fid)
+
+@register_metric
+def fvd2048_128f(opts):
+    opts.dataset_kwargs.update(max_size=None, xflip=False)
+    fvd = frechet_video_distance.compute_fvd(opts, max_real=2048, num_gen=2048, num_frames=128)
+    return dict(fvd2048_128f=fvd)
+
+@register_metric
+def fvd2048_128f_subsample8f(opts):
+    """Similar to `fvd2048_128f`, but we sample each 8-th frame"""
+    opts.dataset_kwargs.update(max_size=None, xflip=False)
+    fvd = frechet_video_distance.compute_fvd(opts, max_real=2048, num_gen=2048, num_frames=16, subsample_factor=8)
+    return dict(fvd2048_128f_subsample8f=fvd)
+
 
 @register_metric
 def fid10k(opts):

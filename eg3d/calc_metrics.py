@@ -96,12 +96,14 @@ def parse_comma_separated_list(s):
 @click.command()
 @click.pass_context
 @click.option('network_pkl', '--network', help='Network pickle filename or URL', metavar='PATH')
-@click.option('--metrics', help='Quality metrics', metavar='[NAME|A,B,C|none]', type=parse_comma_separated_list, default='fid50k_full', show_default=True)
+@click.option('--metrics', help='Quality metrics', metavar='[NAME|A,B,C|none]', type=parse_comma_separated_list,
+              default='fid50k_full', show_default=True)
 @click.option('--data', help='Dataset to evaluate against  [default: look up]', metavar='[ZIP|DIR]')
 @click.option('--data_2', help='Generated dataset to evaluate metric using [default: look up]', metavar='[ZIP|DIR]')
 @click.option('--mirror', help='Enable dataset x-flips  [default: look up]', type=bool, metavar='BOOL')
 @click.option('--gpus', help='Number of GPUs to use', type=int, default=1, metavar='INT', show_default=True)
-@click.option('--verbose', help='Print optional information', type=bool, default=True, metavar='BOOL', show_default=True)
+@click.option('--verbose', help='Print optional information', type=bool, default=True, metavar='BOOL',
+              show_default=True)
 @click.option('--trunc', 'truncation_psi', type=float, help='Truncation psi', default=1, show_default=True)
 
 

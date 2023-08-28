@@ -224,7 +224,7 @@ class VideoFolderDataset(Dataset):
             self._type = 'dir'
             # self._all_fnames = {os.path.relpath(os.path.join(root, fname), start=self._path) for root, _dirs, files in os.walk(self._path) for fname in files}
             # self._all_fnames = {os.path.join(self._path, f'{fname_idx:05d}.mp4') for fname_idx in range(50_000)}
-            self._all_fnames = {os.path.join(self._path, f_name) for f_name in os.listdir(self._path) if f_name.endswith('.mp4')}
+            self._all_fnames = {os.path.join(self._path, f_name) for f_name in sorted(os.listdir(self._path)) if f_name.endswith('.mp4')}
         elif self._file_ext(self._path) == '.zip':
             self._type = 'zip'
             self._all_fnames = set(self._get_zipfile().namelist())

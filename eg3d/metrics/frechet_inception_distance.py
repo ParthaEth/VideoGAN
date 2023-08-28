@@ -29,6 +29,7 @@ def compute_fid(opts, max_real, num_gen):
         rel_lo=0, rel_hi=0, capture_mean_cov=True, max_items=max_real).get_mean_cov()
 
     if opts.G is None:
+        opts.generated_dir.cache = False
         mu_gen, sigma_gen = metric_utils.compute_feature_stats_for_dataset(
             opts=opts.generated_dir, detector_url=detector_url, detector_kwargs=detector_kwargs,
             rel_lo=0, rel_hi=0, capture_mean_cov=True, max_items=num_gen).get_mean_cov()

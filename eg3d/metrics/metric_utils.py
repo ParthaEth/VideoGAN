@@ -19,6 +19,7 @@ import uuid
 import numpy as np
 import torch
 import dnnlib
+from urllib.parse import urlparse
 
 #----------------------------------------------------------------------------
 
@@ -66,7 +67,10 @@ def get_feature_detector(url, device=torch.device('cpu'), num_gpus=1, rank=0, ve
         if not is_leader and num_gpus > 1:
             torch.distributed.barrier() # leader goes first
         with dnnlib.util.open_url(url, verbose=(verbose and is_leader)) as f:
-            _feature_detector_cache[key] = pickle.load(f).to(device)
+            if urlparse(url).path.endswith('.pkl'):
+                _feature_detector_cache[key] = pickle.load(f).to(device)
+            else:
+                _feature_detector_cache[key] = torch.jit.load(f).eval().to(device)
         if is_leader and num_gpus > 1:
             torch.distributed.barrier() # others follow
     return _feature_detector_cache[key]
@@ -211,6 +215,84 @@ class ProgressMonitor:
         )
 
 #----------------------------------------------------------------------------
+
+
+@torch.no_grad()
+def compute_video_feature_stats_for_dataset(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=64,
+                                            data_loader_kwargs=None, max_items=None, temporal_detector=False,
+                                            feature_stats_cls=FeatureStats, **stats_kwargs):
+
+    if opts.dataset_kwargs.class_name is not None:
+        print(f'Warning: will use custom dataset metrics.video_dataset_for_fvd.py.VideoFolderDataset you provided '
+              f'dataloader {opts.dataset_kwargs.class_name}, but it will not be used. Comment the next line if this is '
+              f'not intended in file metric_utils.py, function compute_video_feature_stats_for_dataset')
+
+    opts.dataset_kwargs.class_name = 'metrics.video_dataset_for_fvd.VideoFolderDataset'
+    dataset = dnnlib.util.construct_class_by_name(**opts.dataset_kwargs)
+
+    if data_loader_kwargs is None:
+        data_loader_kwargs = dict(pin_memory=True, num_workers=3, prefetch_factor=2)
+
+    # Try to lookup from cache.
+    cache_file = None
+    if opts.cache:
+        # Choose cache file name.
+        args = dict(dataset_kwargs=opts.dataset_kwargs, detector_url=detector_url, detector_kwargs=detector_kwargs,
+                    stats_kwargs=stats_kwargs, feature_stats_cls=feature_stats_cls.__name__)
+        md5 = hashlib.md5(repr(sorted(args.items())).encode('utf-8'))
+        cache_tag = f'{dataset.name}-{get_feature_detector_name(detector_url)}-{md5.hexdigest()}'
+        cache_file = dnnlib.make_cache_dir_path('gan-metrics', cache_tag + '.pkl')
+
+        # Check if the file exists (all processes must agree).
+        flag = os.path.isfile(cache_file) if opts.rank == 0 else False
+        if opts.num_gpus > 1:
+            flag = torch.as_tensor(flag, dtype=torch.float32, device=opts.device)
+            torch.distributed.broadcast(tensor=flag, src=0)
+            flag = (float(flag.cpu()) != 0)
+
+        # Load.
+        if flag:
+            return feature_stats_cls.load(cache_file)
+
+    # Initialize.
+    num_items = len(dataset)
+    if max_items is not None:
+        num_items = min(num_items, max_items)
+    stats = feature_stats_cls(max_items=num_items, **stats_kwargs)
+    progress = opts.progress.sub(tag='dataset features', num_items=num_items, rel_lo=rel_lo, rel_hi=rel_hi)
+    detector = get_feature_detector(url=detector_url, device=opts.device, num_gpus=opts.num_gpus, rank=opts.rank,
+                                    verbose=progress.verbose)
+
+    # Main loop.
+    item_subset = [(i * opts.num_gpus + opts.rank) % num_items for i in range((num_items - 1) // opts.num_gpus + 1)]
+    for batch in torch.utils.data.DataLoader(dataset=dataset, sampler=item_subset, batch_size=batch_size,
+                                             **data_loader_kwargs):
+        images = batch['image']
+        if temporal_detector:
+            # import ipdb; ipdb.set_trace()
+            images = images.permute(0, 2, 1, 3, 4).contiguous() # [batch_size, c, t, h, w]
+
+            # images = images.float() / 255
+            # images = torch.nn.functional.interpolate(images, size=(images.shape[2], 128, 128), mode='trilinear', align_corners=False) # downsample
+            # images = torch.nn.functional.interpolate(images, size=(images.shape[2], 256, 256), mode='trilinear', align_corners=False) # upsample
+            # images = (images * 255).to(torch.uint8)
+        else:
+            images = images.view(-1, *images.shape[-3:]) # [-1, c, h, w]
+
+        if images.shape[1] == 1:
+            images = images.repeat([1, 3, *([1] * (images.ndim - 2))])
+        features = detector(images.to(opts.device), **detector_kwargs)
+        stats.append_torch(features, num_gpus=opts.num_gpus, rank=opts.rank)
+        progress.update(stats.num_items)
+
+    # Save to cache.
+    if cache_file is not None and opts.rank == 0:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        temp_file = cache_file + '.' + uuid.uuid4().hex
+        stats.save(temp_file)
+        os.replace(temp_file, cache_file) # atomic
+    return stats
+
 
 def compute_feature_stats_for_dataset(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=64, data_loader_kwargs=None, max_items=None, **stats_kwargs):
     dataset = dnnlib.util.construct_class_by_name(**opts.dataset_kwargs)
