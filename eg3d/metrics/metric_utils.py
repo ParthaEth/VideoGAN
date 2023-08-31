@@ -19,6 +19,7 @@ import uuid
 import numpy as np
 import torch
 import dnnlib
+import inspect
 from urllib.parse import urlparse
 
 #----------------------------------------------------------------------------
@@ -294,19 +295,28 @@ def compute_video_feature_stats_for_dataset(opts, detector_url, detector_kwargs,
     return stats
 
 
-def compute_feature_stats_for_dataset(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=64, data_loader_kwargs=None, max_items=None, **stats_kwargs):
+def compute_feature_stats_for_dataset(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=64,
+                                      data_loader_kwargs=None, max_items=None, **stats_kwargs):
     dataset = dnnlib.util.construct_class_by_name(**opts.dataset_kwargs)
     if data_loader_kwargs is None:
         data_loader_kwargs = dict(pin_memory=False, num_workers=3, prefetch_factor=None)
 
     # Try to lookup from cache.
-    cache_file = None
+    cache_file = getattr(opts, 'cache_file', None)
     if opts.cache:
         # Choose cache file name.
-        args = dict(dataset_kwargs=opts.dataset_kwargs, detector_url=detector_url, detector_kwargs=detector_kwargs, stats_kwargs=stats_kwargs)
-        md5 = hashlib.md5(repr(sorted(args.items())).encode('utf-8'))
-        cache_tag = f'{dataset.name}-at_blur_sigma{opts.dataset_kwargs.blur_sigma}-{get_feature_detector_name(detector_url)}-{md5.hexdigest()}'
-        cache_file = dnnlib.make_cache_dir_path('gan-metrics', cache_tag + '.pkl')
+        if cache_file is None:
+            dataset_file = inspect.getfile(dataset.__class__)
+            args = dict(dataset_kwargs=opts.dataset_kwargs, detector_url=detector_url, detector_kwargs=detector_kwargs,
+                        stats_kwargs=stats_kwargs,)
+            dataset_args = repr(sorted(args.items())).encode('utf-8')
+            with open(dataset_file) as f:
+                dataset_code = f.read()
+                md5 = hashlib.md5(dataset_code.encode('utf-8') + dataset_args)
+            cache_tag = f'{dataset.name}-at_blur_sigma{opts.dataset_kwargs.blur_sigma}-' \
+                        f'{get_feature_detector_name(detector_url)}-{md5.hexdigest()}'
+            cache_file = dnnlib.make_cache_dir_path('gan-metrics', cache_tag + '.pkl')
+            setattr(opts, 'cache_file', cache_file)
 
         # Check if the file exists (all processes must agree).
         flag = os.path.isfile(cache_file) if opts.rank == 0 else False

@@ -306,11 +306,14 @@ class VideoFolderDataset(Dataset):
             self.time_steps = vid_vol.shape[-1]
 
         # vid vol shape = (3, 256, 256, 32)
-        for t in range(self.time_steps):
-            # import ipdb; ipdb.set_trace()
-            vid_vol[:, :, :, t] = gaussian_filter(vid_vol[:, :, :, t].transpose(1, 2, 0),
-                                                  sigma=(self.blur_sigma, self.blur_sigma),
-                                                  axes=(0, 1)).transpose(2, 0, 1)
+        vid_vol = gaussian_filter(vid_vol.transpose((1, 2, 3, 0)),
+                                  sigma=(self.blur_sigma, self.blur_sigma),
+                                  axes=(0, 1)).transpose((3, 0, 1, 2))
+
+        # # also time domain blur
+        # vid_vol = gaussian_filter(vid_vol.transpose((1, 2, 3, 0)),
+        #                           sigma=(self.blur_sigma, self.blur_sigma, self.blur_sigma/5),
+        #                           axes=(0, 1, 2)).transpose((3, 0, 1, 2))
 
         if self.apply_crop:
             vid_vol[:, :, :45, :] = 255
