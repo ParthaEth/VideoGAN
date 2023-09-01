@@ -1,0 +1,1 @@
+/home/pghosh/miniconda3/envs/VideoGan80GB_STG_T/bin/python compute_open_and_alpha_pose_kp_distance.py -r $1
