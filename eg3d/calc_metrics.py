@@ -105,9 +105,12 @@ def parse_comma_separated_list(s):
 @click.option('--verbose', help='Print optional information', type=bool, default=True, metavar='BOOL',
               show_default=True)
 @click.option('--trunc', 'truncation_psi', type=float, help='Truncation psi', default=1, show_default=True)
+@click.option('--blur_sigma',   help='at what blur level should we evaluate metric',
+              metavar='INT', type=click.FloatRange(min=0), required=True)
 
 
-def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose, truncation_psi):
+
+def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose, truncation_psi, blur_sigma):
     """Calculate quality metrics for previous training run or pretrained network pickle.
 
     Examples:
@@ -165,6 +168,7 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose,
     # Initialize dataset options.
     if data is not None:
         args.dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data)
+        args.dataset_kwargs.blur_sigma = blur_sigma
     elif network_dict['training_set_kwargs'] is not None:
         args.dataset_kwargs = dnnlib.EasyDict(network_dict['training_set_kwargs'])
     else:
