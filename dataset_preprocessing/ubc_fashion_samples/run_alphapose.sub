@@ -3,7 +3,7 @@ arguments = $(Process) -alht
 error = logs/test_$(Process).err
 output = logs/test_$(Process).out
 log = logs/test_$(Process).log
-request_memory = 128000
+request_memory = 256000
 request_gpus = 1
 request_cpus = 4
 # requirements = CUDADeviceName=="Tesla V100-PCIE-32GB"
