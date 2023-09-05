@@ -88,10 +88,10 @@ if __name__ == '__main__':
     argParser.add_argument("-r", "--rank", type=int, help="rank of this process")
     args = argParser.parse_args()
 
-    vids_per_process = 10
+    vids_per_process = 100
 
     path_UBC_fashion_smpl = '/is/cluster/fast/scratch/ssanyal/video_gan/fashion_videos/UBC_fashion_smpl/train'
-    root_dir = '/is/cluster/fast/scratch/ssanyal/video_gan/fashion_videos/GENERATED_VIDEOS_3/'
+    root_dir = '/is/cluster/scratch/ssanyal/video_gan/fashion_videos/GENERATED_VIDEOS_ALL'
     dest_video_dir = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/'
     thresshold_dist = 10
     vid_list = sorted(os.listdir(root_dir))

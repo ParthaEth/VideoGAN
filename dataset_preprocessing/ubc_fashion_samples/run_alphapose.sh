@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Specify the root directory where you want to start searching
-root_directory='/is/cluster/fast/scratch/ssanyal/video_gan/fashion_videos/GENERATED_VIDEOS_3'
+root_directory='/is/cluster/scratch/ssanyal/video_gan/fashion_videos/GENERATED_VIDEOS_ALL'
 dest_root="$root_directory"_kp
 # Create the directory and its parents if they don't exist
 mkdir -p $dest_root
@@ -13,7 +13,7 @@ if [ $# -eq 0 ]; then
 fi
 
 run_id="$1"
-total_runs=10
+total_runs=100
 
 # Calculate start_id and end_id
 start_id=$((run_id * total_runs))
