@@ -143,7 +143,7 @@ class VideoFolder(data.Dataset):
             i = i+1
             if self.transform is not None:
                 img = self.transform(img)
-            img = img.view(img.size(0),1, img.size(1), img.size(2)) 
+            img = img.view(img.size(0),1, img.size(1), img.size(2))
             img_clip.append(img)
         img_frames = torch.cat(img_clip, 1) 
         return img_frames, target
