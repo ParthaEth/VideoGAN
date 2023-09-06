@@ -297,27 +297,30 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         colors_coarse, features, flows_and_mask = out['rgb'], out['features'], out['flows_and_mask']
 
         # render peep video
-        norm_peep_cod = c[:, 4:6] * 2 - 1
-        assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
-        video_coordinates = []
-        video_spatial_res = num_coordinates_per_axis // 2
-        vide_time_res = 32   # TODO(Partha): pass this coordinate
-        for b_id in range(batch_size):
-            cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2,
-                                   video_spatial_res, dtype=datatype, device=device)
-            cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2,
-                                   video_spatial_res, dtype=datatype, device=device)
-            cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
-            grid_x, grid_y, grid_z = torch.meshgrid(cod_x * 0.5, cod_y * 0.5, cod_z, indexing='ij')
-            coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
-            video_coordinates.append(coordinates)
+        if c.shape[-1] >= 6:
+            norm_peep_cod = c[:, 4:6] * 2 - 1
+            assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
+            video_coordinates = []
+            video_spatial_res = num_coordinates_per_axis // 2
+            vide_time_res = 32   # TODO(Partha): pass this coordinate
+            for b_id in range(batch_size):
+                cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2,
+                                       video_spatial_res, dtype=datatype, device=device)
+                cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2,
+                                       video_spatial_res, dtype=datatype, device=device)
+                cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
+                grid_x, grid_y, grid_z = torch.meshgrid(cod_x * 0.5, cod_y * 0.5, cod_z, indexing='ij')
+                coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
+                video_coordinates.append(coordinates)
 
-        # import ipdb; ipdb.set_trace()
-        video_coordinates = torch.stack(video_coordinates, dim=0).reshape(batch_size, -1, 3)
-        rendering_options['neural_rendering_resolution'] = video_spatial_res
-        rendering_options['time_steps'] = vide_time_res
-        out = self.get_rgb_given_coordinate(decoder, video_coordinates, rendering_options)
-        peep_vid = out['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
-            .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
+            # import ipdb; ipdb.set_trace()
+            video_coordinates = torch.stack(video_coordinates, dim=0).reshape(batch_size, -1, 3)
+            rendering_options['neural_rendering_resolution'] = video_spatial_res
+            rendering_options['time_steps'] = vide_time_res
+            out = self.get_rgb_given_coordinate(decoder, video_coordinates, rendering_options)
+            peep_vid = out['rgb'].reshape(batch_size, video_spatial_res, video_spatial_res, vide_time_res, 3)\
+                .permute(0, 4, 1, 2, 3)  # b, color, x, y, t
+        else:
+            peep_vid = None
 
         return colors_coarse, peep_vid, features, flows_and_mask
