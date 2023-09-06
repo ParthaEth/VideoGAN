@@ -45,8 +45,8 @@ def get_batch(vid_vol, batch_size, device):
     cond_batch = []
     gt_img_batch = []
     for _ in range(batch_size):
-        constant_axis = random.choice(['x', 'y', 't'])
-        # constant_axis = 't'
+        # constant_axis = random.choice(['x', 'y', 't'])
+        constant_axis = 't'
         cnst_coordinate = random.choice(np.linspace(0.001, 0.999, rendering_res))
         # cnst_coordinate = random.choice(np.linspace(0.001, 0.999, 40))
         # import ipdb; ipdb.set_trace()
@@ -66,11 +66,11 @@ if __name__ == '__main__':
     random.seed(1)
     np.random.seed(1)
     device = 'cuda'
-    motion_features = 9
-    appearance_feat = 9
+    motion_features = 36
+    appearance_feat = 32
     plane_h = plane_w = 128
-    rendering_res = 128
-    target_resolution = 128
+    rendering_res = 64
+    target_resolution = 256
     plane_c = appearance_feat + motion_features
     b_size = 16
     toral_batches = 1
@@ -78,7 +78,9 @@ if __name__ == '__main__':
     out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
     os.makedirs(out_dir, exist_ok=True)
     video_path = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/91+20mY7UJS.mp4____91-2Jb8DkfS.mp4'
-    vid_vol = read_video_vol(video_path)
+    vid_vol = read_video_vol(video_path)  # c, h, w, t
+    missing_frame = np.random.randint(0, 256, 1)[0]
+    vid_vol[:, :, :, missing_frame] = 999
 
     planes = torch.clip((1/10)*torch.randn(1, 1, plane_c, plane_h, plane_w,
                                            dtype=torch.float32), min=-3, max=3).to(device)
@@ -104,9 +106,9 @@ if __name__ == '__main__':
             param.requires_grad = False
 
     if target_resolution > rendering_res:
-        superresolution = SuperresolutionHybrid4X(channels=plane_c, img_resolution=target_resolution, sr_num_fp16_res=4,
-                                                  sr_antialias=True, channel_base=32768, channel_max=512,
-                                                  fused_modconv_default='inference_only').to(device)
+        superresolution = SuperresolutionHybrid4X(channels=appearance_feat, img_resolution=target_resolution,
+                                                  sr_num_fp16_res=4, sr_antialias=True, channel_base=32768,
+                                                  channel_max=512, fused_modconv_default='inference_only').to(device)
         sup_res_params = [param for param in superresolution.parameters()]
     else:
         sup_res_params = []
@@ -140,6 +142,7 @@ if __name__ == '__main__':
         batch_idx = np.random.randint(0, toral_batches * b_size, b_size)
         # import ipdb; ipdb.set_trace()
         gt_img, cond = get_batch(vid_vol, b_size, device=device)
+        valid_frame_mask = gt_img.mean((1, 2, 3), keepdim=True) < 990
         # planes_batch = planes[batch_idx].to(device)
         # import ipdb; ipdb.set_trace()
         colors_coarse, _, features, _ = \
@@ -155,10 +158,10 @@ if __name__ == '__main__':
         if target_resolution > rendering_res:
             sr_image = superresolution(rgb_img, feature_image, ws_batch, noise_mode='none')
             # import ipdb; ipdb.set_trace()
-            loss_sr = criterion(sr_image, gt_img)
-            loss_lr = criterion(rgb_img, scale_down(gt_img))
+            loss_sr = criterion(sr_image * valid_frame_mask, gt_img * valid_frame_mask)
+            loss_lr = criterion(rgb_img * valid_frame_mask, scale_down(gt_img * valid_frame_mask))
         else:
-            loss_sr = loss_lr = criterion(rgb_img, scale_down(gt_img))
+            loss_sr = loss_lr = criterion(rgb_img * valid_frame_mask, scale_down(gt_img * valid_frame_mask))
 
         loss = (loss_sr + loss_lr) / 2
         loss.backward()
