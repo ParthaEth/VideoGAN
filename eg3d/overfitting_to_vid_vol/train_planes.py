@@ -1,8 +1,10 @@
+import copy
 import sys
 import os
 
 # Append the parent directory to sys.path to allow relative imports
 sys.path.append('../')
+sys.path.append('../../')
 
 import shutil
 import torch
@@ -17,6 +19,7 @@ import tqdm
 from training.triplane import OSGDecoder
 from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
 from training.superresolution import SuperresolutionHybrid4X
+import dnnlib
 
 
 def read_video_vol(vid_path):
@@ -46,8 +49,8 @@ def get_batch(vid_vol, batch_size, device):
     gt_img_batch = []
     for _ in range(batch_size):
         # constant_axis = random.choice(['x', 'y', 't'])
-        constant_axis = 't'
-        cnst_coordinate = random.choice(np.linspace(0.001, 0.999, rendering_res))
+        constant_axis = 't'  # TODO(Partha): change following line if you change this
+        cnst_coordinate = random.choice(np.linspace(0.001, 0.999, vid_vol.shape[-1]))
         # cnst_coordinate = random.choice(np.linspace(0.001, 0.999, 40))
         # import ipdb; ipdb.set_trace()
         # cnst_coordinate = 0.5
@@ -62,36 +65,53 @@ def get_batch(vid_vol, batch_size, device):
 
 
 if __name__ == '__main__':
+    axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
     torch.manual_seed(1)
     random.seed(1)
     np.random.seed(1)
     device = 'cuda'
-    motion_features = 36
-    appearance_feat = 32
-    plane_h = plane_w = 128
-    rendering_res = 64
+
+    network_pkl = None
+    # network_pkl = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/' \
+    #               '00004-ffhq-fasion_video_bdmm-gpus8-batch128-gamma1/network-snapshot-001228.pkl'
+    if network_pkl is not None:
+        with dnnlib.util.open_url(network_pkl) as f:
+            G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
+
+    # import ipdb; ipdb.set_trace()
+    motion_features = 36 if network_pkl is None else G.motion_features
+    appearance_feat = 32 if network_pkl is None else G.appearance_feat
+    plane_h = plane_w = 32 if network_pkl is None else G.backbone.generator.img_resolution
+    rendering_res = 64 if network_pkl is None else G.neural_rendering_resolution
     target_resolution = 256
     plane_c = appearance_feat + motion_features
     b_size = 16
-    toral_batches = 1
     load_saved = False
     out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
     os.makedirs(out_dir, exist_ok=True)
     video_path = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/91+20mY7UJS.mp4____91-2Jb8DkfS.mp4'
     vid_vol = read_video_vol(video_path)  # c, h, w, t
-    missing_frame = np.random.randint(0, 256, 1)[0]
-    vid_vol[:, :, :, missing_frame] = 999
+    missing_frame_id = np.random.randint(0, 256, 1)[0]
+    print(f'inpenting frame: {missing_frame_id}')
+    missing_frame = copy.deepcopy(vid_vol[:, :, :, missing_frame_id])
+    missing_frame = torch.from_numpy(missing_frame).to(device)
+    missing_frame_cond = np.array(axis_dict['t'] + [missing_frame_id/target_resolution, ]).astype(np.float32)
+    missing_frame_cond = torch.from_numpy(missing_frame_cond).to(device)
+    vid_vol[:, :, :, missing_frame_id] = 999
 
-    planes = torch.clip((1/10)*torch.randn(1, 1, plane_c, plane_h, plane_w,
+    planes = torch.clip((1/30)*torch.randn(1, 1, plane_c, plane_h, plane_w,
                                            dtype=torch.float32), min=-3, max=3).to(device)
-    ws = torch.clip(torch.randn(b_size*toral_batches, 10, 512, dtype=torch.float32), min=-3, max=3).to(device)
+    ws = torch.clip(torch.randn(b_size + 1, 10, 512, dtype=torch.float32), min=-3, max=3).to(device)
     planes.requires_grad = True
     ws.requires_grad = True
 
     if load_saved:
         pre_trained = torch.load(os.path.join(out_dir, 'rend_and_dec_good.pytorch'))
 
-    renderer = AxisAligndProjectionRenderer(return_video=True, motion_features=motion_features).to(device)
+    if network_pkl is None:
+        renderer = AxisAligndProjectionRenderer(return_video=True, motion_features=motion_features).to(device)
+    else:
+        renderer = G.renderer
     rend_params = [param for param in renderer.parameters()]
     if load_saved:
         renderer.load_state_dict(pre_trained['renderer'])
@@ -114,9 +134,9 @@ if __name__ == '__main__':
         sup_res_params = []
 
     mdl_params = rend_params + dec_params + sup_res_params
-    opt = torch.optim.Adam([{'params': planes, 'lr': 0.1},
+    opt = torch.optim.Adam([{'params': planes, 'lr': 1e-2},
                             {'params': ws, 'lr': 1e-3},
-                            {'params': mdl_params}], lr=1e-3, betas=(0.0, 0.9))
+                            {'params': mdl_params, 'lr': 1e-3}], lr=1e-3, betas=(0.0, 0.9))
     # import ipdb;ipdb.set_trace()
     # opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3},
     #                         {'params': mdl_params}], lr=1e-3, betas=(0.0, 0.9))
@@ -126,42 +146,50 @@ if __name__ == '__main__':
 
     train_itr = 5000
     criterion = torch.nn.MSELoss()
-    axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
     pbar = tqdm.tqdm(range(train_itr))
     losses_sr = []
     losses_lr = []
-    best_psnr = 0
+    trn_best_psnr_lr = 0
     scale_down = torchvision.transforms.Resize(size=rendering_res,
                                                interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
                                                antialias=True)
 
-    planes = planes.expand(b_size, -1, -1, -1, -1)
+    planes = planes.expand(b_size + 1, -1, -1, -1, -1)
     # import ipdb; ipdb.set_trace()
+    inpaint_mse_sr = []
+    inpaint_mse_lr = []
+    inpaint_psnr_lr_bst = 0
     for i in pbar:
         # print(dec_params[0][0, 0, 0])
-        batch_idx = np.random.randint(0, toral_batches * b_size, b_size)
         # import ipdb; ipdb.set_trace()
         gt_img, cond = get_batch(vid_vol, b_size, device=device)
-        valid_frame_mask = gt_img.mean((1, 2, 3), keepdim=True) < 990
-        # planes_batch = planes[batch_idx].to(device)
+
+        # Concatinating the missing frame for evaluating missing frame inpainting error
+        gt_img = torch.cat((gt_img, missing_frame[None, ...]), dim=0)
+        cond = torch.cat((cond, missing_frame_cond[None, ...]), dim=0)
+
+        valid_frame_mask = gt_img[:b_size].mean((1, 2, 3), keepdim=True) < 990
+        # if any(valid_frame_mask == 0):
+        #     # import ipdb; ipdb.set_trace()
+        #     print(cond[:b_size][valid_frame_mask.squeeze() == 0] * 256)
         # import ipdb; ipdb.set_trace()
         colors_coarse, _, features, _ = \
             renderer(planes, decoder, cond, None, {'density_noise': 0, 'box_warp': 0.999,
                                                    'neural_rendering_resolution': rendering_res})
 
         # Reshape into 'raw' image
-        rgb_img = colors_coarse.permute(0, 2, 1).reshape(b_size, colors_coarse.shape[-1], rendering_res, rendering_res)
-        feature_image = features.permute(0, 2, 1).reshape(b_size, features.shape[-1], rendering_res, rendering_res)
+        rgb_img = colors_coarse.permute(0, 2, 1).reshape(b_size + 1, colors_coarse.shape[-1], rendering_res, rendering_res)
+        feature_image = features.permute(0, 2, 1).reshape(b_size + 1, features.shape[-1], rendering_res, rendering_res)
 
         # Run superresolution to get final image
-        ws_batch = ws[batch_idx].to(device)
         if target_resolution > rendering_res:
-            sr_image = superresolution(rgb_img, feature_image, ws_batch, noise_mode='none')
+            sr_image = superresolution(rgb_img, feature_image, ws, noise_mode='none')
             # import ipdb; ipdb.set_trace()
-            loss_sr = criterion(sr_image * valid_frame_mask, gt_img * valid_frame_mask)
-            loss_lr = criterion(rgb_img * valid_frame_mask, scale_down(gt_img * valid_frame_mask))
+            loss_sr = criterion(sr_image[:b_size] * valid_frame_mask, gt_img[:b_size] * valid_frame_mask)
+            loss_lr = criterion(rgb_img[:b_size] * valid_frame_mask, scale_down(gt_img[:b_size] * valid_frame_mask))
         else:
-            loss_sr = loss_lr = criterion(rgb_img * valid_frame_mask, scale_down(gt_img * valid_frame_mask))
+            loss_sr = loss_lr = criterion(rgb_img[b_size] * valid_frame_mask,
+                                          scale_down(gt_img[b_size] * valid_frame_mask))
 
         loss = (loss_sr + loss_lr) / 2
         loss.backward()
@@ -171,25 +199,39 @@ if __name__ == '__main__':
         losses_sr.append(loss_sr.item())
         losses_lr.append(loss_lr.item())
         psnr_lr = 10 * np.log10(4 / np.mean(losses_lr[-10:]))
-        if best_psnr < psnr_lr:
-            best_psnr = psnr_lr
+
+        # import ipdb; ipdb.set_trace()
+        inpaint_mse_sr.append(criterion(sr_image[b_size:], gt_img[b_size:]).item())
+        inpaint_mse_lr.append(criterion(rgb_img[b_size:], scale_down(gt_img[b_size:])).item())
+        inpaint_psnr_lr = 10 * np.log10(4 / np.mean(inpaint_mse_lr[-10:]))
+        inpaint_psnr_sr = 10 * np.log10(4 / np.mean(inpaint_mse_sr[-10:]))
+
+        if inpaint_psnr_lr_bst < inpaint_psnr_lr:
+            inpaint_psnr_lr_bst = inpaint_psnr_lr
+
+        if trn_best_psnr_lr < psnr_lr:
+            trn_best_psnr_lr = psnr_lr
             torch.save({'renderer': renderer.state_dict(), 'decoder': decoder.state_dict()},
                        os.path.join(out_dir, 'rend_and_dec_not_useful.pytorch'))
 
         pbar.set_description(f'loss_sr: {np.mean(losses_sr[-10:]):0.6f}, loss_lr: {np.mean(losses_lr[-10:]):0.6f}, '
-                             f'PSNR: {psnr_lr:0.2f}, PSNR_best:{best_psnr:0.2f}, '
-                             f'planes.std: {planes.std().item():0.5f}, '
-                             f'planes.mean: {planes.mean().item():0.5f}')
+                             f'trn_PSNR(lr): {psnr_lr:0.2f}, trn_PSNR_best(lr):{trn_best_psnr_lr:0.2f}, '
+                             # f'planes.std: {planes.std().item():0.5f}, '
+                             # f'planes.mean: {planes.mean().item():0.5f}, '
+                             f'inpaint_psnr_lr: {inpaint_psnr_lr:0.2f}, '
+                             f'inpaint_psnr_sr: {inpaint_psnr_sr:0.2f}, inpaint_psnr_lr_bst: {inpaint_psnr_lr_bst:2f}')
         scheduler.step(np.mean(losses_sr[-10:]))
 
         if i % 200 == 0:
             cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.9], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
-            rgb_img, _, _, _ = renderer(planes[:len(cond)], decoder, cond, None,
+            rgb_img_test, _, _, _ = renderer(planes[:len(cond)], decoder, cond, None,
                                         {'density_noise': 0, 'box_warp': 0.999,
                                          'neural_rendering_resolution': rendering_res})
-            feature_image = rgb_img.permute(0, 2, 1).reshape(cond.shape[0], rgb_img.shape[-1], rendering_res,
-                                                             rendering_res)
-            rgb_image_to_save = torch.cat((feature_image[:, :3], scale_down(gt_img[:3])), dim=0)
+            feature_image = rgb_img_test.permute(0, 2, 1).reshape(cond.shape[0], rgb_img_test.shape[-1], rendering_res,
+                                                                  rendering_res)
+            rgb_image_to_save = torch.cat((feature_image[:, :3], scale_down(gt_img[:3]),
+                                           rgb_img[b_size:], scale_down(gt_img[b_size:])),
+                                           dim=0)
             torchvision.utils.save_image((rgb_image_to_save + 1)/2, os.path.join(out_dir, f'{i:03d}.png'))
 
     # print(rend_params)
