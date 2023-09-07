@@ -1,6 +1,8 @@
 import copy
 import sys
 import os
+import argparse
+import random
 
 # Append the parent directory to sys.path to allow relative imports
 sys.path.append('../')
@@ -65,10 +67,18 @@ def get_batch(vid_vol, batch_size, device):
 
 
 if __name__ == '__main__':
+    argParser = argparse.ArgumentParser()
+    argParser.add_argument("-r", "--rank", type=int, help="rank of this process")
+    argParser.add_argument("-dp", "--disable_progressbar", type=bool, default=True, help="don't show progress")
+    args = argParser.parse_args()
+    #
+    # args.disable_progressbar = False
+
     axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
-    torch.manual_seed(1)
-    random.seed(1)
-    np.random.seed(1)
+    seed = 1
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
     device = 'cuda'
 
     network_pkl = None
@@ -83,25 +93,33 @@ if __name__ == '__main__':
     appearance_feat = 32 if network_pkl is None else G.appearance_feat
     plane_h = plane_w = 32 if network_pkl is None else G.backbone.generator.img_resolution
     rendering_res = 64 if network_pkl is None else G.neural_rendering_resolution
-    target_resolution = 256
+    # target_resolution = 256
+    target_resolution = 64
     plane_c = appearance_feat + motion_features
     b_size = 16
     load_saved = False
     out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
     os.makedirs(out_dir, exist_ok=True)
-    video_path = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/91+20mY7UJS.mp4____91-2Jb8DkfS.mp4'
+    video_root = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/'
+    videos = sorted(os.listdir(video_root))
+    random.Random(seed).shuffle(videos)
+    video_path = os.path.join(video_root, videos[args.rank])
     vid_vol = read_video_vol(video_path)  # c, h, w, t
-    missing_frame_id = np.random.randint(0, 256, 1)[0]
-    print(f'inpenting frame: {missing_frame_id}')
-    missing_frame = copy.deepcopy(vid_vol[:, :, :, missing_frame_id])
-    missing_frame = torch.from_numpy(missing_frame).to(device)
-    missing_frame_cond = np.array(axis_dict['t'] + [missing_frame_id/target_resolution, ]).astype(np.float32)
-    missing_frame_cond = torch.from_numpy(missing_frame_cond).to(device)
-    vid_vol[:, :, :, missing_frame_id] = 999
+    num_missing_frames = 3
+    frame_start = np.random.randint(0, 256 - num_missing_frames, 1)[0]
+    missing_frame_ids = np.arange(frame_start, frame_start + num_missing_frames)
+    print(f'inpenting frame: {missing_frame_ids}')
+    missing_frame = copy.deepcopy(vid_vol[:, :, :, missing_frame_ids])
+    missing_frame = torch.from_numpy(missing_frame).to(device).permute(3, 0, 1, 2)
+    missing_frame_cond = []
+    for missing_frame_id in missing_frame_ids:
+        missing_frame_cond.append(axis_dict['t'] + [missing_frame_id / target_resolution, ])
+    missing_frame_cond = torch.from_numpy(np.array(missing_frame_cond).astype(np.float32)).to(device)
+    vid_vol[:, :, :, missing_frame_ids] = 999
 
     planes = torch.clip((1/30)*torch.randn(1, 1, plane_c, plane_h, plane_w,
                                            dtype=torch.float32), min=-3, max=3).to(device)
-    ws = torch.clip(torch.randn(b_size + 1, 10, 512, dtype=torch.float32), min=-3, max=3).to(device)
+    ws = torch.clip(torch.randn(b_size + num_missing_frames, 10, 512, dtype=torch.float32), min=-3, max=3).to(device)
     planes.requires_grad = True
     ws.requires_grad = True
 
@@ -146,7 +164,11 @@ if __name__ == '__main__':
 
     train_itr = 5000
     criterion = torch.nn.MSELoss()
-    pbar = tqdm.tqdm(range(train_itr))
+    if args.disable_progressbar:
+        pbar = range(train_itr)
+    else:
+        pbar = tqdm.tqdm(range(train_itr))
+
     losses_sr = []
     losses_lr = []
     trn_best_psnr_lr = 0
@@ -154,7 +176,7 @@ if __name__ == '__main__':
                                                interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
                                                antialias=True)
 
-    planes = planes.expand(b_size + 1, -1, -1, -1, -1)
+    planes = planes.expand(b_size + num_missing_frames, -1, -1, -1, -1)
     # import ipdb; ipdb.set_trace()
     inpaint_mse_sr = []
     inpaint_mse_lr = []
@@ -165,8 +187,8 @@ if __name__ == '__main__':
         gt_img, cond = get_batch(vid_vol, b_size, device=device)
 
         # Concatinating the missing frame for evaluating missing frame inpainting error
-        gt_img = torch.cat((gt_img, missing_frame[None, ...]), dim=0)
-        cond = torch.cat((cond, missing_frame_cond[None, ...]), dim=0)
+        gt_img = torch.cat((gt_img, missing_frame), dim=0)
+        cond = torch.cat((cond, missing_frame_cond), dim=0)
 
         valid_frame_mask = gt_img[:b_size].mean((1, 2, 3), keepdim=True) < 990
         # if any(valid_frame_mask == 0):
@@ -178,8 +200,10 @@ if __name__ == '__main__':
                                                    'neural_rendering_resolution': rendering_res})
 
         # Reshape into 'raw' image
-        rgb_img = colors_coarse.permute(0, 2, 1).reshape(b_size + 1, colors_coarse.shape[-1], rendering_res, rendering_res)
-        feature_image = features.permute(0, 2, 1).reshape(b_size + 1, features.shape[-1], rendering_res, rendering_res)
+        rgb_img = colors_coarse.permute(0, 2, 1).reshape(b_size + num_missing_frames,
+                                                         colors_coarse.shape[-1], rendering_res, rendering_res)
+        feature_image = features.permute(0, 2, 1).reshape(b_size + num_missing_frames,
+                                                          features.shape[-1], rendering_res, rendering_res)
 
         # Run superresolution to get final image
         if target_resolution > rendering_res:
@@ -188,8 +212,8 @@ if __name__ == '__main__':
             loss_sr = criterion(sr_image[:b_size] * valid_frame_mask, gt_img[:b_size] * valid_frame_mask)
             loss_lr = criterion(rgb_img[:b_size] * valid_frame_mask, scale_down(gt_img[:b_size] * valid_frame_mask))
         else:
-            loss_sr = loss_lr = criterion(rgb_img[b_size] * valid_frame_mask,
-                                          scale_down(gt_img[b_size] * valid_frame_mask))
+            loss_sr = loss_lr = criterion(rgb_img[:b_size] * valid_frame_mask,
+                                          scale_down(gt_img[:b_size] * valid_frame_mask))
 
         loss = (loss_sr + loss_lr) / 2
         loss.backward()
@@ -201,28 +225,30 @@ if __name__ == '__main__':
         psnr_lr = 10 * np.log10(4 / np.mean(losses_lr[-10:]))
 
         # import ipdb; ipdb.set_trace()
-        inpaint_mse_sr.append(criterion(sr_image[b_size:], gt_img[b_size:]).item())
+        # inpaint_mse_sr.append(criterion(sr_image[b_size:], gt_img[b_size:]).item())
         inpaint_mse_lr.append(criterion(rgb_img[b_size:], scale_down(gt_img[b_size:])).item())
         inpaint_psnr_lr = 10 * np.log10(4 / np.mean(inpaint_mse_lr[-10:]))
-        inpaint_psnr_sr = 10 * np.log10(4 / np.mean(inpaint_mse_sr[-10:]))
+        # inpaint_psnr_sr = 10 * np.log10(4 / np.mean(inpaint_mse_sr[-10:]))
 
         if inpaint_psnr_lr_bst < inpaint_psnr_lr:
             inpaint_psnr_lr_bst = inpaint_psnr_lr
 
-        if trn_best_psnr_lr < psnr_lr:
+        if trn_best_psnr_lr < psnr_lr and not args.disable_progressbar:
             trn_best_psnr_lr = psnr_lr
             torch.save({'renderer': renderer.state_dict(), 'decoder': decoder.state_dict()},
                        os.path.join(out_dir, 'rend_and_dec_not_useful.pytorch'))
 
-        pbar.set_description(f'loss_sr: {np.mean(losses_sr[-10:]):0.6f}, loss_lr: {np.mean(losses_lr[-10:]):0.6f}, '
-                             f'trn_PSNR(lr): {psnr_lr:0.2f}, trn_PSNR_best(lr):{trn_best_psnr_lr:0.2f}, '
-                             # f'planes.std: {planes.std().item():0.5f}, '
-                             # f'planes.mean: {planes.mean().item():0.5f}, '
-                             f'inpaint_psnr_lr: {inpaint_psnr_lr:0.2f}, '
-                             f'inpaint_psnr_sr: {inpaint_psnr_sr:0.2f}, inpaint_psnr_lr_bst: {inpaint_psnr_lr_bst:2f}')
+        if not args.disable_progressbar:
+            pbar.set_description(f'loss_sr: {np.mean(losses_sr[-10:]):0.6f}, loss_lr: {np.mean(losses_lr[-10:]):0.6f}, '
+                                 f'trn_PSNR(lr): {psnr_lr:0.2f}, trn_PSNR_best(lr):{trn_best_psnr_lr:0.2f}, '
+                                 # f'planes.std: {planes.std().item():0.5f}, '
+                                 # f'planes.mean: {planes.mean().item():0.5f}, '
+                                 f'inpaint_psnr_lr: {inpaint_psnr_lr:0.2f}, '
+                                 # f'inpaint_psnr_sr: {inpaint_psnr_sr:0.2f}, '
+                                 f'inpaint_psnr_lr_bst: {inpaint_psnr_lr_bst:2f}')
         scheduler.step(np.mean(losses_sr[-10:]))
 
-        if i % 200 == 0:
+        if i % 200 == 0 and not args.disable_progressbar:
             cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.9], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
             rgb_img_test, _, _, _ = renderer(planes[:len(cond)], decoder, cond, None,
                                         {'density_noise': 0, 'box_warp': 0.999,
@@ -235,3 +261,4 @@ if __name__ == '__main__':
             torchvision.utils.save_image((rgb_image_to_save + 1)/2, os.path.join(out_dir, f'{i:03d}.png'))
 
     # print(rend_params)
+    np.save(os.path.join(out_dir, f'{videos[args.rank]}_ststs.npy'), inpaint_psnr_lr_bst)
