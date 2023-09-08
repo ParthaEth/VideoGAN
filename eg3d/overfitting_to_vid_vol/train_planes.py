@@ -22,6 +22,7 @@ from training.triplane import OSGDecoder
 from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
 from training.superresolution import SuperresolutionHybrid4X
 import dnnlib
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 
 def read_video_vol(vid_path):
@@ -37,7 +38,7 @@ def read_video_vol(vid_path):
 
 def get_slice(vid_vol, cond):
     # vid_vol of shape  # c, h, w, t
-    const_ax_depth = int(cond[3] * vid_vol.shape[1])
+    const_ax_depth = int(cond[3] * vid_vol.shape[1 + np.argmax(cond[:3])])
     if np.argmax(cond[:3]) == 0:
         return vid_vol[:, const_ax_depth:const_ax_depth+1, :, :].transpose(1, 0, 2, 3)  # 1, c, w, t
     elif np.argmax(cond[:3]) == 1:
@@ -52,7 +53,9 @@ def get_batch(vid_vol, batch_size, device):
     for _ in range(batch_size):
         # constant_axis = random.choice(['x', 'y', 't'])
         constant_axis = 't'  # TODO(Partha): change following line if you change this
-        cnst_coordinate = random.choice(np.linspace(0.001, 0.999, vid_vol.shape[-1]))
+        # import ipdb; ipdb.set_trace()
+        cnst_coordinate = random.choice(np.linspace(0.001, 0.999,
+                                                    vid_vol.shape[1+ np.argmax(axis_dict[constant_axis])]))
         # cnst_coordinate = random.choice(np.linspace(0.001, 0.999, 40))
         # import ipdb; ipdb.set_trace()
         # cnst_coordinate = 0.5
@@ -69,10 +72,10 @@ def get_batch(vid_vol, batch_size, device):
 if __name__ == '__main__':
     argParser = argparse.ArgumentParser()
     argParser.add_argument("-r", "--rank", type=int, help="rank of this process")
-    argParser.add_argument("-dp", "--disable_progressbar", type=bool, default=True, help="don't show progress")
+    argParser.add_argument("-dp", "--disable_progressbar", type=lambda x: str(x).lower() in ('true', '1'),
+                           default='False', help="don't show progress")
+    argParser.add_argument("-vr", "--video_root", type=str, required=True, help="don't show progress")
     args = argParser.parse_args()
-    #
-    # args.disable_progressbar = False
 
     axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
     seed = 1
@@ -93,20 +96,24 @@ if __name__ == '__main__':
     appearance_feat = 32 if network_pkl is None else G.appearance_feat
     plane_h = plane_w = 32 if network_pkl is None else G.backbone.generator.img_resolution
     rendering_res = 64 if network_pkl is None else G.neural_rendering_resolution
-    # target_resolution = 256
-    target_resolution = 64
+    target_resolution = 256
+    # target_resolution = 64
     plane_c = appearance_feat + motion_features
     b_size = 16
     load_saved = False
+    ssim = StructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)).to(device)
     out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
     os.makedirs(out_dir, exist_ok=True)
-    video_root = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/'
-    videos = sorted(os.listdir(video_root))
+    # video_root = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/'
+    args.video_root = args.video_root.rstrip('/')
+    videos = sorted(os.listdir(args.video_root))
+    # import ipdb; ipdb.set_trace()
     random.Random(seed).shuffle(videos)
-    video_path = os.path.join(video_root, videos[args.rank])
+    video_path = os.path.join(args.video_root, videos[args.rank])
     vid_vol = read_video_vol(video_path)  # c, h, w, t
     num_missing_frames = 3
-    frame_start = np.random.randint(0, 256 - num_missing_frames, 1)[0]
+    total_frames = vid_vol.shape[-1]
+    frame_start = np.random.randint(0, total_frames - num_missing_frames, 1)[0]
     missing_frame_ids = np.arange(frame_start, frame_start + num_missing_frames)
     print(f'inpenting frame: {missing_frame_ids}')
     missing_frame = copy.deepcopy(vid_vol[:, :, :, missing_frame_ids])
@@ -162,7 +169,7 @@ if __name__ == '__main__':
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, 'min', factor=0.25, patience=300, verbose=True,
                                                            threshold=1e-3)
 
-    train_itr = 5000
+    train_itr = 700
     criterion = torch.nn.MSELoss()
     if args.disable_progressbar:
         pbar = range(train_itr)
@@ -181,6 +188,7 @@ if __name__ == '__main__':
     inpaint_mse_sr = []
     inpaint_mse_lr = []
     inpaint_psnr_lr_bst = 0
+    inpaint_ssim = 0
     for i in pbar:
         # print(dec_params[0][0, 0, 0])
         # import ipdb; ipdb.set_trace()
@@ -228,10 +236,12 @@ if __name__ == '__main__':
         # inpaint_mse_sr.append(criterion(sr_image[b_size:], gt_img[b_size:]).item())
         inpaint_mse_lr.append(criterion(rgb_img[b_size:], scale_down(gt_img[b_size:])).item())
         inpaint_psnr_lr = 10 * np.log10(4 / np.mean(inpaint_mse_lr[-10:]))
+
         # inpaint_psnr_sr = 10 * np.log10(4 / np.mean(inpaint_mse_sr[-10:]))
 
         if inpaint_psnr_lr_bst < inpaint_psnr_lr:
             inpaint_psnr_lr_bst = inpaint_psnr_lr
+            inpaint_ssim = ssim(rgb_img[b_size:], scale_down(gt_img[b_size:]))
 
         if trn_best_psnr_lr < psnr_lr and not args.disable_progressbar:
             trn_best_psnr_lr = psnr_lr
@@ -245,7 +255,8 @@ if __name__ == '__main__':
                                  # f'planes.mean: {planes.mean().item():0.5f}, '
                                  f'inpaint_psnr_lr: {inpaint_psnr_lr:0.2f}, '
                                  # f'inpaint_psnr_sr: {inpaint_psnr_sr:0.2f}, '
-                                 f'inpaint_psnr_lr_bst: {inpaint_psnr_lr_bst:2f}')
+                                 f'inpaint_psnr_lr_bst: {inpaint_psnr_lr_bst:2f}, '
+                                 f'inp_ssim = {inpaint_ssim}')
         scheduler.step(np.mean(losses_sr[-10:]))
 
         if i % 200 == 0 and not args.disable_progressbar:
@@ -261,4 +272,6 @@ if __name__ == '__main__':
             torchvision.utils.save_image((rgb_image_to_save + 1)/2, os.path.join(out_dir, f'{i:03d}.png'))
 
     # print(rend_params)
-    np.save(os.path.join(out_dir, f'{videos[args.rank]}_ststs.npy'), inpaint_psnr_lr_bst)
+    np.savez(os.path.join(out_dir, f'{os.path.basename(args.video_root)}_{videos[args.rank]}_ststs.npz'),
+             inpaint_psnr=inpaint_psnr_lr_bst,
+             inpaint_ssim=inpaint_ssim.item())
