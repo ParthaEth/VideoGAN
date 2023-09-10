@@ -111,7 +111,7 @@ if __name__ == '__main__':
     random.Random(seed).shuffle(videos)
     video_path = os.path.join(args.video_root, videos[args.rank])
     vid_vol = read_video_vol(video_path)  # c, h, w, t
-    num_missing_frames = 3
+    num_missing_frames = 8
     total_frames = vid_vol.shape[-1]
     frame_start = np.random.randint(0, total_frames - num_missing_frames, 1)[0]
     missing_frame_ids = np.arange(frame_start, frame_start + num_missing_frames)
@@ -124,17 +124,27 @@ if __name__ == '__main__':
     missing_frame_cond = torch.from_numpy(np.array(missing_frame_cond).astype(np.float32)).to(device)
     vid_vol[:, :, :, missing_frame_ids] = 999
 
-    planes = torch.clip((1/30)*torch.randn(1, 1, plane_c, plane_h, plane_w,
-                                           dtype=torch.float32), min=-3, max=3).to(device)
+    feature_grid_type = '3d_voxels'
+    if feature_grid_type.lower() == 'triplane':
+        feature_grid = torch.clip((1 / 30) * torch.randn(1, 1, plane_c, plane_h, plane_w,
+                                                         dtype=torch.float32), min=-3, max=3).to(device)
+    elif feature_grid_type.lower() == '3d_voxels':
+        vol_h = vol_w = vol_d = int(np.power(plane_h * plane_w, 1/3))
+        feature_grid = torch.clip((1 / 30) * torch.randn(1, plane_c, vol_h, vol_w, vol_d,
+                                                         dtype=torch.float32), min=-3, max=3).to(device)
+    elif feature_grid_type.lower() == 'positional_embedding':
+        feature_grid = torch.zeros(1, 1, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)
+
     ws = torch.clip(torch.randn(b_size + num_missing_frames, 10, 512, dtype=torch.float32), min=-3, max=3).to(device)
-    planes.requires_grad = True
+    feature_grid.requires_grad = True
     ws.requires_grad = True
 
     if load_saved:
         pre_trained = torch.load(os.path.join(out_dir, 'rend_and_dec_good.pytorch'))
 
     if network_pkl is None:
-        renderer = AxisAligndProjectionRenderer(return_video=True, motion_features=motion_features).to(device)
+        renderer = AxisAligndProjectionRenderer(return_video=True, motion_features=motion_features,
+                                                appearance_features=appearance_feat).to(device)
     else:
         renderer = G.renderer
     rend_params = [param for param in renderer.parameters()]
@@ -159,9 +169,13 @@ if __name__ == '__main__':
         sup_res_params = []
 
     mdl_params = rend_params + dec_params + sup_res_params
-    opt = torch.optim.Adam([{'params': planes, 'lr': 1e-2},
-                            {'params': ws, 'lr': 1e-3},
-                            {'params': mdl_params, 'lr': 1e-3}], lr=1e-3, betas=(0.0, 0.9))
+    if feature_grid_type.lower() == 'positional_embedding':
+        opt = torch.optim.Adam([{'params': ws, 'lr': 1e-3},
+                                {'params': mdl_params, 'lr': 1e-3}], lr=1e-3, betas=(0.0, 0.9))
+    else:
+        opt = torch.optim.Adam([{'params': feature_grid, 'lr': 1e-2},
+                                {'params': ws, 'lr': 1e-3},
+                                {'params': mdl_params, 'lr': 1e-3}], lr=1e-3, betas=(0.0, 0.9))
     # import ipdb;ipdb.set_trace()
     # opt = torch.optim.Adam([{'params': planes, 'lr': 1e-3},
     #                         {'params': mdl_params}], lr=1e-3, betas=(0.0, 0.9))
@@ -183,7 +197,7 @@ if __name__ == '__main__':
                                                interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
                                                antialias=True)
 
-    planes = planes.expand(b_size + num_missing_frames, -1, -1, -1, -1)
+    feature_grid = feature_grid.expand(b_size + num_missing_frames, -1, -1, -1, -1)
     # import ipdb; ipdb.set_trace()
     inpaint_mse_sr = []
     inpaint_mse_lr = []
@@ -204,8 +218,9 @@ if __name__ == '__main__':
         #     print(cond[:b_size][valid_frame_mask.squeeze() == 0] * 256)
         # import ipdb; ipdb.set_trace()
         colors_coarse, _, features, _ = \
-            renderer(planes, decoder, cond, None, {'density_noise': 0, 'box_warp': 0.999,
-                                                   'neural_rendering_resolution': rendering_res})
+            renderer(feature_grid, decoder, cond, None, {'density_noise': 0, 'box_warp': 0.999,
+                                                   'neural_rendering_resolution': rendering_res,
+                                                   'feature_grid_type': feature_grid_type})
 
         # Reshape into 'raw' image
         rgb_img = colors_coarse.permute(0, 2, 1).reshape(b_size + num_missing_frames,
@@ -261,9 +276,10 @@ if __name__ == '__main__':
 
         if i % 200 == 0 and not args.disable_progressbar:
             cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.9], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
-            rgb_img_test, _, _, _ = renderer(planes[:len(cond)], decoder, cond, None,
-                                        {'density_noise': 0, 'box_warp': 0.999,
-                                         'neural_rendering_resolution': rendering_res})
+            rgb_img_test, _, _, _ = renderer(feature_grid[:len(cond)], decoder, cond, None,
+                                             {'density_noise': 0, 'box_warp': 0.999,
+                                         'neural_rendering_resolution': rendering_res,
+                                         'feature_grid_type': feature_grid_type})
             feature_image = rgb_img_test.permute(0, 2, 1).reshape(cond.shape[0], rgb_img_test.shape[-1], rendering_res,
                                                                   rendering_res)
             rgb_image_to_save = torch.cat((feature_image[:, :3], scale_down(gt_img[:3]),

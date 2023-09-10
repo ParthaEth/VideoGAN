@@ -14,6 +14,7 @@ ray, and computes pixel colors using the volume rendering equation.
 """
 
 import torch
+from positional_encodings.torch_encodings import PositionalEncodingPermute3D
 
 
 def generate_planes():
@@ -84,11 +85,12 @@ def sample_from_3dgrid(grid, coordinates):
     return sampled_features
 
 class BaseRenderer(torch.nn.Module):
-    def __init__(self, motion_features):
+    def __init__(self, motion_features, appearance_features):
         super().__init__()
         # self.plane_axes = torch.nn.Parameter(generate_planes(num_planes))
         self.register_buffer('plane_axes', generate_planes())
         self.motion_features = motion_features
+        self.appearance_features = appearance_features
 
         self.motion_encoder = torch.nn.Sequential(
             torch.nn.Linear(motion_features, 64, bias=True),
@@ -105,10 +107,20 @@ class BaseRenderer(torch.nn.Module):
     #         if module.bias is not None:
     #             module.bias.data.zero_()
 
+        self.pos_emb = None
     def forward(self, planes, decoder, ray_origins, ray_directions, rendering_options):
         raise NotImplementedError()
 
     def get_3D_grid(self, rend_res, dtype, device):
+        """
+        Args:
+            rend_res: int
+            dtype: float32/ any other
+            device: cuda/cpu
+
+        Returns:
+            coordinates: of shape (rend_res, rend_res, rend_res, 3)
+        """
         cod_x = cod_y = cod_z = torch.linspace(-1, 1, rend_res, dtype=dtype, device=device)
         grid_x, grid_y, grid_z = torch.meshgrid(cod_x, cod_y, cod_z, indexing='ij')
         coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
@@ -129,21 +141,43 @@ class BaseRenderer(torch.nn.Module):
         identity_lf_gfc_mask = torch.cat((identity_lf, identity_gfc, identity_mask), dim=-1)
         return identity_lf_gfc_mask
 
-    def get_motion_feature_vol(self, planes, options, bypass_network):
-        """ Planes: batch_size, n_planes, channels, h, w ; n_planes == 3 is assumed later
+    def get_motion_feature_vol(self, feature_grid, options):
+        """ feature_grid:
+                Planes: batch_size, n_planes, channels, h, w ; n_planes == 3 is assumed later
+                voxels: batch_size, channels, h, w, d
             return lf_gfc_mask: batch, rend_res, rend_res, rend_res, 5
         """
 
-        batch, _, _, _, _ = planes.shape
+        batch, _, _, _, _ = feature_grid.shape
         rend_res = options['neural_rendering_resolution']
-        dtype, device = planes.dtype, planes.device
+        feature_grid_type = options['feature_grid_type']
+        dtype, device = feature_grid.dtype, feature_grid.device
         coordinates = self.get_3D_grid(rend_res, dtype, device).reshape(1, -1, 3).expand(batch, -1, -1)
-        lf_gfc_mask = sample_from_planes(self.plane_axes, planes, coordinates, padding_mode='zeros',
-                                         box_warp=options['box_warp'])
-        # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 3
-        # import ipdb; ipdb.set_trace()
-        lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3)  # lf_gfc_mask is of shape batch, num_pts, planes, pln_chnls
-        # lf_gfc_mask is of shape batch, num_pts, planes*pln_chnls
+        if feature_grid_type.lower() == 'triplane':
+            lf_gfc_mask = sample_from_planes(self.plane_axes, feature_grid, coordinates, padding_mode='zeros',
+                                             box_warp=options['box_warp'])
+            # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 3
+            # import ipdb; ipdb.set_trace()
+            lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3)  # lf_gfc_mask is of shape batch, num_pts, planes, pln_chnls
+            # lf_gfc_mask is of shape batch, num_pts, planes*pln_chnls
+        elif feature_grid_type.lower() == '3d_voxels':
+            # feature_grid of shape batch, channel, height, width, depth
+            # coordinates shape batch, h_c, w_c, d_c, 3
+            lf_gfc_mask = torch.nn.functional.grid_sample(
+                feature_grid, coordinates[:, None, None, ...], align_corners=True)
+            # lf_gfc_mask shape: batch, motion_features, 1, 1, N_pt
+            lf_gfc_mask = lf_gfc_mask.squeeze(1, 2, 3, 4).permute(0, 2, 1)  # batch, n_pt, motion_features
+        elif feature_grid_type.lower() == 'positional_embedding':
+            # self.pos_emb of shape batch, channel, height, width, depth
+            # coordinates shape batch, h_c, w_c, d_c, 3
+            lf_gfc_mask = torch.nn.functional.grid_sample(
+                self.pos_emb.expand(batch, -1, -1, -1, -1), coordinates, coordinates[:, None, None, ...],
+                align_corners=True)
+            # lf_gfc_mask shape: batch, motion_features, 1, 1, N_pt
+            lf_gfc_mask = lf_gfc_mask.squeeze(1, 2, 3, 4).permute(0, 2, 1)  # batch, n_pt, motion_features
+        else:
+            raise ValueError(f'{feature_grid_type} not understood')
+
         lf_gfc_mask = lf_gfc_mask.reshape(batch, rend_res, rend_res, rend_res, self.motion_features)
         # transposing x and y as torch gris type'ij' transposes the input
         lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3, 4)  # batch, height, width, depth, ch
@@ -164,28 +198,54 @@ class BaseRenderer(torch.nn.Module):
 
 
 class AxisAligndProjectionRenderer(BaseRenderer):
-    def __init__(self, return_video, motion_features):
+    def __init__(self, return_video, motion_features, appearance_features):
         # self.neural_rendering_resolution = neural_rendering_resolution
         self.return_video = return_video
-        super().__init__(motion_features)
+        super().__init__(motion_features, appearance_features)
         self.appearance_volume = None
         self.lf_gfc_mask = None
 
     def forward_warp(self, feature_frame, grid):
         return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=True)
 
-    def prepare_feature_volume(self, planes, options, bypass_network=False):
+    def prepare_feature_volume(self, feature_grid, options, bypass_network=False):
         """Plane: a torch tensor b, 1, 38, h, w"""
         rend_res = options['neural_rendering_resolution']
         # fist self.motion_features are assumed to be motion features
-        batch, n_planes, channels, h, w = planes.shape
-        assert n_planes == 1, 'Here it is assumed that planes are stacked in the channel dims'
-        motion_feature_planes = planes[:, :, :self.motion_features, :, :].reshape(batch, 3, -1, h, w)
-        self.lf_gfc_mask = self.get_motion_feature_vol(motion_feature_planes, options, bypass_network)
+        feature_grid_type = options['feature_grid_type']
+        if feature_grid_type.lower() == 'triplane':
+            batch, n_planes, channels, h, w = feature_grid.shape
+            assert n_planes == 1, 'Here it is assumed that planes are stacked in the channel dims'
+            motion_feature_grid = feature_grid[:, :, :self.motion_features, :, :].reshape(batch, 3, -1, h, w)
+            global_appearance_features = feature_grid[:, 0, self.motion_features:, :, :]
+        elif feature_grid_type.lower() == '3d_voxels':
+            # feature_grid shape: batch, chn, h, w, d
+            # motion_feature_grid shape: batch, motion_features, h, w, d
+            motion_feature_grid = feature_grid[:, :self.motion_features, :, :, :]
+
+            # First plane is assumed to be global appearance features
+            # global_features: batch, ch, h, w
+            global_appearance_features = feature_grid[:, self.motion_features:, :, :, 0]
+        elif feature_grid_type.lower() == 'positional_embedding':
+            if self.pos_emb is None:
+                emb_dim = self.motion_features + self.appearance_features
+                std_pos_encoder = PositionalEncodingPermute3D(emb_dim)
+                # pos_emb shape: batchsize, ch, x, y, z
+                self.pos_emb = std_pos_encoder(torch.randn(1, emb_dim, rend_res, rend_res, rend_res))
+
+            # feature_grid shape: Can be None. Ignored if not
+            # motion_feature_grid : None, positional embeddings will be used
+            motion_feature_grid = self.pos_emb[:, :self.motion_features, :, :, :]
+
+            # First plane is assumed to be global appearance features
+            # global_features: batch, ch, h, w
+            global_appearance_features = self.pos_emb[:, self.motion_features:, :, :, 0]
+        else:
+            raise ValueError(f'{feature_grid_type} not understood')
+
+        self.lf_gfc_mask = self.get_motion_feature_vol(motion_feature_grid, options)
         # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth),
         # 5 =((w, h), (w, h), mask)
-        global_appearance_features = planes[:, 0, self.motion_features:, :, :]
-        # import ipdb; ipdb.set_trace()
 
         appearance_volume = []
         prev_frame = None
@@ -220,7 +280,6 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
         # import ipdb; ipdb.set_trace()
 
-
         # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),
         # 5 =((w, h), (w, h), mask), # sample_coordinates: (batch, npts, dims (dims := h, w, t))
         # But grid sample assumes sample cods to have depth, with, height ordering so the permutation
@@ -236,17 +295,20 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         out['flows_and_mask'] = flows_and_mask
         return out
 
-    def forward(self, planes, decoder, c, ray_directions, rendering_options):
+    def forward(self, feature_grid, decoder, c, ray_directions, rendering_options):
         # assert ray_origins is None  # This will be ignored silently
         # assert ray_directions is None   # This will be ignored silently
-        device = planes.device
-        datatype = planes.dtype
+        device = feature_grid.device
+        datatype = feature_grid.dtype
         # self.plane_axes = self.plane_axes.to(device)
-        self.prepare_feature_volume(planes, rendering_options, bypass_network=False)
+        self.prepare_feature_volume(feature_grid, rendering_options, bypass_network=False)
 
-        batch_size, num_planes, planes_ch, _, _ = planes.shape
+        if rendering_options['feature_grid_type'].lower() == 'triplane':
+            batch_size, num_planes, _, _, _ = feature_grid.shape
+            assert num_planes == 1, 'right now appearance planes and 3 flow planes are all in channel dim'
+        else:
+            batch_size, _, _, _, _ = feature_grid.shape
 
-        assert num_planes == 1, 'right now appearance planes and 3 flow planes are all in channel dim'
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
         axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
