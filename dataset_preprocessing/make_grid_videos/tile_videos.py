@@ -8,11 +8,12 @@ import random
 # source_root = '/is/cluster/fast/pghosh/datasets/ffhq/256X256_zoom_vid'
 # source_root = '/home/pghosh/Downloads/videoGeneration/bw_bouncing_sq/all_vids'
 # source_root = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/talking_faces_vid'
-source_root = '/is/cluster/fast/pghosh/datasets/ffhq_X_10_good_motions_10_motions'
+source_root = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm'
 # source_root = '/is/cluster/fast/pghosh/datasets/bouncing_sq/ranad_init_vel/vids'
 # outdir = '/is/cluster/fast/pghosh/datasets/ffhq'
 # outdir = '/home/pghosh/Downloads/videoGeneration/bw_bouncing_sq/'
-outdir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/'
+# outdir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/'
+outdir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids'
 # outdir = '/is/cluster/fast/pghosh/datasets/bouncing_sq/ranad_init_vel'
 st_idx = 0
 tile_width = 10
