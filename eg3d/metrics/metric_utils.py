@@ -240,7 +240,12 @@ def compute_video_feature_stats_for_dataset(opts, detector_url, detector_kwargs,
         # Choose cache file name.
         args = dict(dataset_kwargs=opts.dataset_kwargs, detector_url=detector_url, detector_kwargs=detector_kwargs,
                     stats_kwargs=stats_kwargs, feature_stats_cls=feature_stats_cls.__name__)
-        md5 = hashlib.md5(repr(sorted(args.items())).encode('utf-8'))
+        dataset_args = repr(sorted(args.items())).encode('utf-8')
+        dataset_file = inspect.getfile(dataset.__class__)
+        with open(dataset_file) as f:
+            dataset_code = f.read()
+            md5 = hashlib.md5(dataset_code.encode('utf-8') + dataset_args)
+
         cache_tag = f'{dataset.name}-{get_feature_detector_name(detector_url)}-{md5.hexdigest()}'
         cache_file = dnnlib.make_cache_dir_path('gan-metrics', cache_tag + '.pkl')
 

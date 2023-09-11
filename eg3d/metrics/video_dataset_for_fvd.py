@@ -3,6 +3,7 @@ from typing import Dict
 import os
 import imageio
 import numpy as np
+import random
 
 
 class VideoFolderDataset(torch.utils.data.Dataset):
@@ -15,8 +16,10 @@ class VideoFolderDataset(torch.utils.data.Dataset):
         load_n_consecutive_random_offset: bool=False,   # Should we use a random offset when loading consecutive frames?
         subsample_factor: int=1,                        # Sampling factor, i.e. decreasing the temporal resolution
         discard_short_videos: bool=False,               # Should we discard videos that are shorter than `load_n_consecutive`?
+        blur_sigma :float=0
     ):
         super().__init__()
+        assert blur_sigma < 1e-5, f'FVD with frame blur have not been implemented'
         self.name = os.path.splitext(os.path.basename(path))[0]
         self.resolution = resolution
         self.load_n_consecutive = load_n_consecutive
@@ -30,6 +33,7 @@ class VideoFolderDataset(torch.utils.data.Dataset):
             self._type = 'dir'
             self._all_fnames = [os.path.join(path, f_name)
                                 for f_name in sorted(os.listdir(path)) if f_name.endswith('.mp4')]
+            random.Random(3630).shuffle(self._all_fnames)
 
     def __getitem__(self, idx: int) -> Dict:
         fname = self._all_fnames[idx]
