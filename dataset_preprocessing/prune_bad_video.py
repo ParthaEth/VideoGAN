@@ -1,6 +1,6 @@
 import os
 import imageio
-# import tqdm
+import tqdm
 from argparse import ArgumentParser
 
 
@@ -10,7 +10,9 @@ args = parser.parse_args()
 
 # src_dir = '/is/cluster/fast/pghosh/datasets/eg3d_generated_0.5'
 # src_dir = '/is/cluster/fast/pghosh/datasets/ffhq_X_few_good_talking_motion_3_motions'
-src_dir = '/is/cluster/fast/pghosh/datasets/fashion_ivd_first_order_motion'
+# src_dir = '/is/cluster/fast/pghosh/datasets/fashion_ivd_first_order_motion'
+src_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/' \
+          '00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/talking_faces_vid'
 # src_dir = '/dev/shm/eg3d_generated_0.5'
 n_files_per_proces = 100
 files_this_process = sorted(os.listdir(src_dir))

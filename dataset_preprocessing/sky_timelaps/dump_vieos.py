@@ -15,12 +15,18 @@ def write_video(video_dest_path, vid):
     video_out.close()
 
 
-root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/sky_train'
-dest_root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips'
+# root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/sky_train'
+root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/sky_test'
+dest_root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips_test'
 nframes = 32
-training_data = VideoFolder(root, nframes, torchvision.transforms.ToTensor())
-train_dataloader = DataLoader(training_data, batch_size=1, shuffle=False, num_workers=10)
+data_set = VideoFolder(root, nframes, torchvision.transforms.ToTensor())
+dataloader = DataLoader(data_set, batch_size=1, shuffle=False, num_workers=10)
 
-for vid_id, (vid_b, label) in enumerate(tqdm.tqdm(train_dataloader)):
+vid_count = 0
+max_vid_cnt = np.inf  # dumps all videos in dataset
+for vid_id, (vid_b, label) in enumerate(tqdm.tqdm(dataloader)):
     video_dest_path = os.path.join(dest_root, f'{vid_id:05d}.mp4')
-    write_video(video_dest_path, vid_b[0].permute(1, 2, 3, 0)[:, :256, 192:448] * 255)
+    write_video(video_dest_path, vid_b[0].permute(1, 2, 3, 0)[:, :256, 192:448] * 255)  # centre top crop
+    vid_count += 1
+    if vid_count >= max_vid_cnt:
+        break

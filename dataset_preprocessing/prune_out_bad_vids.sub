@@ -1,4 +1,4 @@
-executable = prune_generated_samples.sh
+executable = prune_out_bad_vids.sh
 arguments = $(Process) -alht
 error = logs/test_$(Process).err
 output = logs/test_$(Process).out
