@@ -14,7 +14,6 @@ ray, and computes pixel colors using the volume rendering equation.
 """
 
 import torch
-from positional_encodings.torch_encodings import PositionalEncodingPermute3D
 
 
 def generate_planes():
@@ -160,19 +159,11 @@ class BaseRenderer(torch.nn.Module):
             # import ipdb; ipdb.set_trace()
             lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3)  # lf_gfc_mask is of shape batch, num_pts, planes, pln_chnls
             # lf_gfc_mask is of shape batch, num_pts, planes*pln_chnls
-        elif feature_grid_type.lower() == '3d_voxels':
+        elif feature_grid_type.lower() == '3d_voxels' or 'positional_embedding':
             # feature_grid of shape batch, channel, height, width, depth
             # coordinates shape batch, h_c, w_c, d_c, 3
             lf_gfc_mask = torch.nn.functional.grid_sample(
                 feature_grid, coordinates[:, None, None, ...], align_corners=True)
-            # lf_gfc_mask shape: batch, motion_features, 1, 1, N_pt
-            lf_gfc_mask = lf_gfc_mask.squeeze(1, 2, 3, 4).permute(0, 2, 1)  # batch, n_pt, motion_features
-        elif feature_grid_type.lower() == 'positional_embedding':
-            # self.pos_emb of shape batch, channel, height, width, depth
-            # coordinates shape batch, h_c, w_c, d_c, 3
-            lf_gfc_mask = torch.nn.functional.grid_sample(
-                self.pos_emb.expand(batch, -1, -1, -1, -1), coordinates, coordinates[:, None, None, ...],
-                align_corners=True)
             # lf_gfc_mask shape: batch, motion_features, 1, 1, N_pt
             lf_gfc_mask = lf_gfc_mask.squeeze(1, 2, 3, 4).permute(0, 2, 1)  # batch, n_pt, motion_features
         else:
@@ -218,7 +209,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             assert n_planes == 1, 'Here it is assumed that planes are stacked in the channel dims'
             motion_feature_grid = feature_grid[:, :, :self.motion_features, :, :].reshape(batch, 3, -1, h, w)
             global_appearance_features = feature_grid[:, 0, self.motion_features:, :, :]
-        elif feature_grid_type.lower() == '3d_voxels':
+        elif feature_grid_type.lower() == '3d_voxels' or 'positional_embedding':
             # feature_grid shape: batch, chn, h, w, d
             # motion_feature_grid shape: batch, motion_features, h, w, d
             motion_feature_grid = feature_grid[:, :self.motion_features, :, :, :]
@@ -226,20 +217,6 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             # First plane is assumed to be global appearance features
             # global_features: batch, ch, h, w
             global_appearance_features = feature_grid[:, self.motion_features:, :, :, 0]
-        elif feature_grid_type.lower() == 'positional_embedding':
-            if self.pos_emb is None:
-                emb_dim = self.motion_features + self.appearance_features
-                std_pos_encoder = PositionalEncodingPermute3D(emb_dim)
-                # pos_emb shape: batchsize, ch, x, y, z
-                self.pos_emb = std_pos_encoder(torch.randn(1, emb_dim, rend_res, rend_res, rend_res))
-
-            # feature_grid shape: Can be None. Ignored if not
-            # motion_feature_grid : None, positional embeddings will be used
-            motion_feature_grid = self.pos_emb[:, :self.motion_features, :, :, :]
-
-            # First plane is assumed to be global appearance features
-            # global_features: batch, ch, h, w
-            global_appearance_features = self.pos_emb[:, self.motion_features:, :, :, 0]
         else:
             raise ValueError(f'{feature_grid_type} not understood')
 

@@ -23,6 +23,7 @@ from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
 from training.superresolution import SuperresolutionHybrid4X
 import dnnlib
 from torchmetrics.image import StructuralSimilarityIndexMeasure
+from positional_encodings.torch_encodings import PositionalEncodingPermute3D
 
 
 def read_video_vol(vid_path):
@@ -74,7 +75,7 @@ if __name__ == '__main__':
     argParser.add_argument("-r", "--rank", type=int, help="rank of this process")
     argParser.add_argument("-dp", "--disable_progressbar", type=lambda x: str(x).lower() in ('true', '1'),
                            default='False', help="don't show progress")
-    argParser.add_argument("-vr", "--video_root", type=str, required=True, help="don't show progress")
+    argParser.add_argument("-vr", "--video_root", type=str, required=True, help="Dataset root_dir")
     args = argParser.parse_args()
 
     axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
@@ -124,7 +125,8 @@ if __name__ == '__main__':
     missing_frame_cond = torch.from_numpy(np.array(missing_frame_cond).astype(np.float32)).to(device)
     vid_vol[:, :, :, missing_frame_ids] = 999
 
-    feature_grid_type = '3d_voxels'
+    # feature_grid_type = '3d_voxels'
+    feature_grid_type = 'positional_embedding'
     if feature_grid_type.lower() == 'triplane':
         feature_grid = torch.clip((1 / 30) * torch.randn(1, 1, plane_c, plane_h, plane_w,
                                                          dtype=torch.float32), min=-3, max=3).to(device)
@@ -133,10 +135,13 @@ if __name__ == '__main__':
         feature_grid = torch.clip((1 / 30) * torch.randn(1, plane_c, vol_h, vol_w, vol_d,
                                                          dtype=torch.float32), min=-3, max=3).to(device)
     elif feature_grid_type.lower() == 'positional_embedding':
-        feature_grid = torch.zeros(1, 1, plane_c, plane_h, plane_w, dtype=torch.float32).to(device)
+        std_pos_encoder = PositionalEncodingPermute3D(plane_c).to(device)
+        feature_grid = std_pos_encoder(torch.zeros((1, plane_c, plane_h, plane_w, rendering_res), device=device))
+    else:
+        raise NotImplementedError(f'feature grid type: {feature_grid_type} not recognized')
 
     ws = torch.clip(torch.randn(b_size + num_missing_frames, 10, 512, dtype=torch.float32), min=-3, max=3).to(device)
-    feature_grid.requires_grad = True
+    feature_grid.requires_grad = True  # if not feature_grid_type.lower() == 'positional_embedding'
     ws.requires_grad = True
 
     if load_saved:
