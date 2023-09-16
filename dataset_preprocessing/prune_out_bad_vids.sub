@@ -29,4 +29,4 @@ periodic_release = ( (JobStatus =?= 5) && (HoldReasonCode =?= 3) && (HoldReasonS
 
 #+MaxRunningPrice = 50
 #+RunningPriceExceededAction = "restart"
-queue 20
+queue 100
