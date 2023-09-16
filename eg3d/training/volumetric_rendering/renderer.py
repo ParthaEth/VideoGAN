@@ -149,7 +149,8 @@ class BaseRenderer(torch.nn.Module):
 
         batch, _, _, _, _ = feature_grid.shape
         rend_res = options['neural_rendering_resolution']
-        feature_grid_type = options['feature_grid_type']
+        # default to triplane type for backward comp
+        feature_grid_type = options.get('feature_grid_type', 'triplane')
         dtype, device = feature_grid.dtype, feature_grid.device
         coordinates = self.get_3D_grid(rend_res, dtype, device).reshape(1, -1, 3).expand(batch, -1, -1)
         if feature_grid_type.lower() == 'triplane':
@@ -203,7 +204,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         """Plane: a torch tensor b, 1, 38, h, w"""
         rend_res = options['neural_rendering_resolution']
         # fist self.motion_features are assumed to be motion features
-        feature_grid_type = options['feature_grid_type']
+        feature_grid_type = options.get('feature_grid_type', 'triplane')  # default to triplane type for backward comp
         if feature_grid_type.lower() == 'triplane':
             batch, n_planes, channels, h, w = feature_grid.shape
             assert n_planes == 1, 'Here it is assumed that planes are stacked in the channel dims'
@@ -280,7 +281,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         # self.plane_axes = self.plane_axes.to(device)
         self.prepare_feature_volume(feature_grid, rendering_options, bypass_network=False)
 
-        if rendering_options['feature_grid_type'].lower() == 'triplane':
+        if rendering_options.get('feature_grid_type', 'triplane').lower() == 'triplane':
             batch_size, num_planes, _, _, _ = feature_grid.shape
             assert num_planes == 1, 'right now appearance planes and 3 flow planes are all in channel dim'
         else:
