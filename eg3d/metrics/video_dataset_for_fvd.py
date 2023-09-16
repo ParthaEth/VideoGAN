@@ -4,6 +4,7 @@ import os
 import imageio
 import numpy as np
 import random
+from scipy.ndimage import gaussian_filter
 
 
 class VideoFolderDataset(torch.utils.data.Dataset):
@@ -19,7 +20,7 @@ class VideoFolderDataset(torch.utils.data.Dataset):
         blur_sigma :float=0
     ):
         super().__init__()
-        assert blur_sigma < 1e-5, f'FVD with frame blur have not been implemented'
+        self.blur_sigma = blur_sigma
         self.name = os.path.splitext(os.path.basename(path))[0]
         self.resolution = resolution
         self.load_n_consecutive = load_n_consecutive
@@ -54,6 +55,12 @@ class VideoFolderDataset(torch.utils.data.Dataset):
                 break
 
         vid_vol = np.array(vid_vol)  # THWC
+        # apply blur
+        if self.blur_sigma >= 1e-2:
+            vid_vol = gaussian_filter(vid_vol,
+                                      sigma=(self.blur_sigma, self.blur_sigma),
+                                      axes=(1, 2))
+
         vid_vol = vid_vol.transpose((0, 3, 1, 2))  # TCHW
         assert vid_vol.dtype == np.uint8
 

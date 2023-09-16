@@ -164,6 +164,7 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose,
     else:
         args.G = None
         args.G_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data_2)
+        args.G_kwargs.blur_sigma = 0
 
     # Initialize dataset options.
     if data is not None:
