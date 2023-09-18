@@ -26,11 +26,18 @@ CC=gcc-7
 #--outdir=$out_dir --network=$network --seeds $start_id-$end_id --img_type sr_image --trunc=0.7 --show_flow False
 
 
-echo "run_id = 007"
-out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00007-ffhq-video_clips-gpus8-batch128-gamma1/\
-videos_net_3440_fid_lowest_trunk0.9"
-network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00007-ffhq-video_clips-gpus8-batch128-gamma1/\
-network-snapshot-003440.pkl"
+echo "run_id = 010"
+out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00010-ffhq-video_clips-gpus8-batch128-gamma1/video"
+network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00010-ffhq-video_clips-gpus8-batch128-gamma1/\
+network-snapshot-001884.pkl"
+
+/home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
+--outdir=$out_dir --network=$network --seeds $start_id-$end_id --img_type sr_image --trunc=0.9 --show_flow False
+
+echo "run_id = 002"
+out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00002-ffhq-video_clips-gpus8-batch128-gamma1/video"
+network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00002-ffhq-video_clips-gpus8-batch128-gamma1/\
+network-snapshot-001802.pkl"
 
 /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
 --outdir=$out_dir --network=$network --seeds $start_id-$end_id --img_type sr_image --trunc=0.9 --show_flow False

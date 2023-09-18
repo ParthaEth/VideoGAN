@@ -1,0 +1,16 @@
+# Assuming your video files are in the "videos" directory
+source_directory="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all"
+
+# Specify the target directories
+train_directory="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm//train"
+test_directory="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/test"
+
+# Create the "train" and "test" directories if they don't exist
+mkdir -p "$train_directory"
+mkdir -p "$test_directory"
+
+# Copy the first 2048 videos to the "train" directory
+find "$source_directory" -maxdepth 1 -type f -name "*.mp4" | head -n 2048 | xargs -I {} cp {} "$train_directory"
+
+# Copy the next 2048 videos to the "test" directory
+find "$source_directory" -maxdepth 1 -type f -name "*.mp4" | tail -n +2049 | head -n 2048 | xargs -I {} cp {} "$test_directory"
