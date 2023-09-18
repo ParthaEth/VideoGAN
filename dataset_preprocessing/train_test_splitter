@@ -1,16 +1,16 @@
 # Assuming your video files are in the "videos" directory
-source_directory="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all"
+source_directory="/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_10_good_motions_10_motions/ffhq_X_10_good_motions_10_motions_all"
 
 # Specify the target directories
-train_directory="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm//train"
-test_directory="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/test"
+train_directory="/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_10_good_motions_10_motions/train"
+test_directory="/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_10_good_motions_10_motions/test"
 
 # Create the "train" and "test" directories if they don't exist
 mkdir -p "$train_directory"
 mkdir -p "$test_directory"
 
-# Copy the first 2048 videos to the "train" directory
-find "$source_directory" -maxdepth 1 -type f -name "*.mp4" | head -n 2048 | xargs -I {} cp {} "$train_directory"
+# Copy the first 50000 videos to the "train" directory
+find "$source_directory" -maxdepth 1 -type f -name "*.mp4" | head -n 50000 | xargs -I {} cp {} "$train_directory"
 
-# Copy the next 2048 videos to the "test" directory
-find "$source_directory" -maxdepth 1 -type f -name "*.mp4" | tail -n +2049 | head -n 2048 | xargs -I {} cp {} "$test_directory"
+# Copy the next 50000 videos to the "test" directory
+find "$source_directory" -maxdepth 1 -type f -name "*.mp4" | tail -n +50001 | head -n 50000 | xargs -I {} cp {} "$test_directory"

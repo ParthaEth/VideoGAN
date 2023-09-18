@@ -73,3 +73,20 @@ class VideoFolderDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self._all_fnames)
+
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+    data_path = '/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/' \
+                'ffhq_X_10_good_motions_10_motions/train'
+    dataset_blr_5 = VideoFolderDataset(path=data_path, blur_sigma=5, load_n_consecutive=32)
+    dataset_blr_0 = VideoFolderDataset(path=data_path, blur_sigma=0, load_n_consecutive=32)
+    for i in range(500):
+        img = dataset_blr_0.__getitem__(i)['image']
+        img_blr = dataset_blr_5.__getitem__(i)['image']
+        fig = plt.figure()
+        ax1 = fig.add_subplot(121)  # left side
+        ax2 = fig.add_subplot(122)  # right side
+        ax1.imshow(img[20].transpose((1, 2, 0)))
+        ax2.imshow(img_blr[20].transpose((1, 2, 0)))
+        plt.show()
