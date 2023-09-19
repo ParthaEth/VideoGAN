@@ -21,6 +21,7 @@ class VideoFolderDataset(torch.utils.data.Dataset):
     ):
         super().__init__()
         self.blur_sigma = blur_sigma
+        print(f'Video dataset with blur: {blur_sigma}')
         self.name = os.path.splitext(os.path.basename(path))[0]
         self.resolution = resolution
         self.load_n_consecutive = load_n_consecutive
@@ -42,7 +43,7 @@ class VideoFolderDataset(torch.utils.data.Dataset):
 
         self.start_frame_id = \
             np.random.randint(0, 256 - self.load_n_consecutive) if self.load_n_consecutive_random_offset else 0
-        self.end_frame_id = self.load_n_consecutive + self.start_frame_id
+        self.end_frame_id = self.load_n_consecutive * self.subsample_factor + self.start_frame_id
 
         vid_vol = []
         for fidx in range(self.start_frame_id, self.end_frame_id, self.subsample_factor):

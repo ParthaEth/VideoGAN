@@ -33,7 +33,7 @@ def compute_fvd(opts, max_real: int, num_gen: int, num_frames: int, subsample_fa
         capture_mean_cov=True, max_items=max_real, temporal_detector=True, batch_size=batch_size).get_mean_cov()
 
     opts.generated_dir.dataset_kwargs.load_n_consecutive = num_frames
-    opts.generated_dir.dataset_kwargs.subsample_factor = subsample_factor
+    # opts.generated_dir.dataset_kwargs.subsample_factor = subsample_factor
     opts.generated_dir.cache = False
     mu_gen, sigma_gen = metric_utils.compute_video_feature_stats_for_dataset(
         opts=opts.generated_dir, detector_url=detector_url, detector_kwargs=detector_kwargs, rel_lo=0, rel_hi=0,
