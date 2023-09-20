@@ -13,8 +13,11 @@ run_id="$1"
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/sky_timelapse"
 
-vid_src_dir="/is/cluster/fast/pghosh/datasets/ffhq_X_10_good_motions_10_motions"
+vid_src_dir="/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_10_good_motions_10_motions/ffhq_X_10_good_motions_10_motions_all"
 dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ffhq_X_10_good_motions_10_motions"
+
+#vid_src_dir="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all"
+#dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/fasion_video_bdmm_all"
 
 # Ensure the root directory exists
 if [ ! -d "$vid_src_dir" ]; then
@@ -47,7 +50,9 @@ for ((i = start_index; i < end_index && i < ${#sorted_files[@]}; i++)); do
 
         # Use ffmpeg to extract frames into the corresponding directory
 #        ffmpeg -i "$video_file" -q:v 3 "$output_directory/frame%04d.jpg"
-        ffmpeg -i "$video_file" -vf "select=not(mod(n\,8)),setpts=N/FRAME_RATE/TB" -q:v 3 "$output_directory/frame%04d.jpg"  # genrates 32 frames of a 256 vid
+
+        ffmpeg -i "$video_file" -q:v 3 -vf "select='not(mod(n\,5))'" -vframes 32 "$output_directory/frame%04d.jpg"
+
 
         echo "Extracted frames from $video_file to $output_directory/"
     fi

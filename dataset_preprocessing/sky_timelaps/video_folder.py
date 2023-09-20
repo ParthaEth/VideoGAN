@@ -1,3 +1,4 @@
+import numpy as np
 import torch.utils.data as data
 import torch
 from PIL import Image
@@ -22,7 +23,7 @@ def find_classes(dir):
     return classes, class_to_idx
 
 
-def make_dataset(dir, nframes, class_to_idx):
+def make_dataset(dir, nframes, class_to_idx, max_clips_per_vid, frame_offset):
     images = []
     n_video = 0
     n_clip = 0
@@ -32,25 +33,36 @@ def make_dataset(dir, nframes, class_to_idx):
             # eg: dir + '/rM7aPu9WV2Q'
             subfolder_path = os.path.join(dir, target) 
             for subsubfold in sorted(os.listdir(subfolder_path) ):
-                if os.path.isdir(os.path.join(subfolder_path, subsubfold) ):
-                	# eg: dir + '/rM7aPu9WV2Q/1'
+                if os.path.isdir(os.path.join(subfolder_path, subsubfold)):
+                    # eg: dir + '/rM7aPu9WV2Q/1'
                     n_clip += 1
                     subsubfolder_path = os.path.join(subfolder_path, subsubfold) 
                     
                     item_frames = []
                     i = 1
-                    for fi in sorted( os.listdir(subsubfolder_path) ):
-                        if  is_image_file(fi):
-                        # fi is an image in the subsubfolder
-                            file_name = fi
-                            # eg: dir + '/rM7aPu9WV2Q/1/rM7aPu9WV2Q_frames_00086552.jpg'
-                            file_path = os.path.join(subsubfolder_path,file_name) 
-                            item = (file_path, class_to_idx[target])
-                            item_frames.append(item)
-                            if i %nframes == 0 and i >0 :
-                                images.append(item_frames) # item_frames is a list containing n frames. 
-                                item_frames = []
-                            i = i+1
+                    clips_frm_this_vid = 0
+                    sorted_frames = sorted([imf for imf in os.listdir(subsubfolder_path) if is_image_file(imf)])
+                    if frame_offset.lower() == 'random':
+                        if len(sorted_frames) < nframes:
+                            continue
+                        offset = np.random.randint(0, len(sorted_frames) - nframes)
+                    elif frame_offset.lower() == 'none':
+                        offset = 0
+                    else:
+                        raise ValueError(f'unrecognized offset mode: {frame_offset}')
+                    for fi in sorted_frames[offset:]:
+                        file_name = fi
+                        # eg: dir + '/rM7aPu9WV2Q/1/rM7aPu9WV2Q_frames_00086552.jpg'
+                        file_path = os.path.join(subsubfolder_path, file_name)
+                        item = (file_path, class_to_idx[target])
+                        item_frames.append(item)
+                        if i % nframes == 0 and i > 0:
+                            images.append(item_frames) # item_frames is a list containing n frames.
+                            item_frames = []
+                            clips_frm_this_vid += 1
+                        if max_clips_per_vid <= clips_frm_this_vid:
+                            break
+                        i = i+1
     print('number of long videos:')
     print(n_video)
     print('number of short videos')
@@ -109,9 +121,12 @@ class VideoFolder(data.Dataset):
     """
 
     def __init__(self, root, nframes,  transform=None, target_transform=None,
-                 loader=default_loader):
+                 loader=default_loader, max_clips_per_vid=None, frame_offset='none'):
         classes, class_to_idx = find_classes(root)
-        imgs = make_dataset(root, nframes,  class_to_idx)
+        self.max_clips_per_vid = np.inf if max_clips_per_vid is None else max_clips_per_vid
+        self.frame_offset = 'none' if frame_offset is None else frame_offset
+
+        imgs = make_dataset(root, nframes,  class_to_idx, self.max_clips_per_vid, frame_offset)
         if len(imgs) == 0:
             raise(RuntimeError("Found 0 images in subfolders of: " + root + "\n"
                                "Supported image extensions are: " + 

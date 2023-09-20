@@ -128,6 +128,9 @@ def get_identity_flow(rend_res, dtype, device):
               type=click.Choice(['raw', 'sr_image']), required=False, default='sr_image')
 @click.option('--show_flow', help='Just save videos or also flow', metavar='STR',
               type=bool, required=False, default=True)
+@click.option('--num_frames', help='total number of frames to generate. Thsi decided FPS. This will impact FVD'
+                                   ' coputation. Should match how you subsample training data', type=int,
+              required=True, metavar='int', show_default=True)
 
 def generate_images(
     network_pkl: str,
@@ -143,7 +146,8 @@ def generate_images(
     reload_modules: bool,
     axis: str,
     img_type: str,
-    show_flow: bool
+    show_flow: bool,
+    num_frames: int
 ):
     """Generate images using pretrained network pickle.
 
@@ -183,9 +187,9 @@ def generate_images(
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=30, codec='libx264')
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim,).astype(np.float32)).to(device).repeat(b_size, 1)
-        time_cod = torch.linspace(0, 1, G.img_resolution)
+        time_cod = torch.linspace(0, 1, num_frames)
 
-        batches = G.img_resolution // b_size
+        batches = num_frames // b_size
         # x0 = np.random.randint(0, 256 - 40)/256
         # y0 = np.random.randint(0, 256 - 40)/256
         # vel_p_frame = [0, 0]
