@@ -126,7 +126,7 @@ class VideoFolder(data.Dataset):
         self.max_clips_per_vid = np.inf if max_clips_per_vid is None else max_clips_per_vid
         self.frame_offset = 'none' if frame_offset is None else frame_offset
 
-        imgs = make_dataset(root, nframes,  class_to_idx, self.max_clips_per_vid, frame_offset)
+        imgs = make_dataset(root, nframes,  class_to_idx, self.max_clips_per_vid, self.frame_offset)
         if len(imgs) == 0:
             raise(RuntimeError("Found 0 images in subfolders of: " + root + "\n"
                                "Supported image extensions are: " + 

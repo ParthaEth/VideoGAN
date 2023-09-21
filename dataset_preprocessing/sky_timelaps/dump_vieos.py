@@ -15,10 +15,10 @@ def write_video(video_dest_path, vid):
     video_out.close()
 
 # train
-# root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/sky_train'
-root = '/is/cluster/fast/pghosh/datasets/sky_timelapse_256'
+root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/sky_train'
+# root = '/is/cluster/fast/pghosh/datasets/sky_timelapse_256'
 # dest_root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips'
-dest_root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clip_fvd_frm_stg_v_tran_set'
+dest_root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clip_12f_train'
 
 # test
 # root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/sky_test'
