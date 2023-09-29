@@ -23,7 +23,15 @@ def find_classes(dir):
     return classes, class_to_idx
 
 
-def make_dataset(dir, nframes, class_to_idx, max_clips_per_vid, frame_offset):
+def split_sorted_frames(sorted_frames, sub_smpl_factor):
+    sequences = []
+    for i in range(sub_smpl_factor):
+        sequence = sorted_frames[i::sub_smpl_factor]  # Use list slicing to select every nth element
+        sequences.append(sequence)
+    return sequences
+
+
+def make_dataset(dir, nframes, class_to_idx, max_clips_per_vid, frame_offset, subsample_factor):
     images = []
     n_video = 0
     n_clip = 0
@@ -42,27 +50,32 @@ def make_dataset(dir, nframes, class_to_idx, max_clips_per_vid, frame_offset):
                     i = 1
                     clips_frm_this_vid = 0
                     sorted_frames = sorted([imf for imf in os.listdir(subsubfolder_path) if is_image_file(imf)])
-                    if frame_offset.lower() == 'random':
-                        if len(sorted_frames) < nframes:
-                            continue
-                        offset = np.random.randint(0, len(sorted_frames) - nframes)
-                    elif frame_offset.lower() == 'none':
-                        offset = 0
+                    if subsample_factor > 1:
+                        frame_seqs = split_sorted_frames(sorted_frames, subsample_factor)
                     else:
-                        raise ValueError(f'unrecognized offset mode: {frame_offset}')
-                    for fi in sorted_frames[offset:]:
-                        file_name = fi
-                        # eg: dir + '/rM7aPu9WV2Q/1/rM7aPu9WV2Q_frames_00086552.jpg'
-                        file_path = os.path.join(subsubfolder_path, file_name)
-                        item = (file_path, class_to_idx[target])
-                        item_frames.append(item)
-                        if i % nframes == 0 and i > 0:
-                            images.append(item_frames) # item_frames is a list containing n frames.
-                            item_frames = []
-                            clips_frm_this_vid += 1
-                        if max_clips_per_vid <= clips_frm_this_vid:
-                            break
-                        i = i+1
+                        frame_seqs = [sorted_frames, ]
+                    for frame_seq in frame_seqs:
+                        if frame_offset.lower() == 'random':
+                            if len(frame_seq) < nframes:
+                                continue
+                            offset = np.random.randint(0, len(frame_seq) - nframes)
+                        elif frame_offset.lower() == 'none':
+                            offset = 0
+                        else:
+                            raise ValueError(f'unrecognized offset mode: {frame_offset}')
+                        for fi in frame_seq[offset:]:
+                            file_name = fi
+                            # eg: dir + '/rM7aPu9WV2Q/1/rM7aPu9WV2Q_frames_00086552.jpg'
+                            file_path = os.path.join(subsubfolder_path, file_name)
+                            item = (file_path, class_to_idx[target])
+                            item_frames.append(item)
+                            if i % nframes == 0 and i > 0:
+                                images.append(item_frames) # item_frames is a list containing n frames.
+                                item_frames = []
+                                clips_frm_this_vid += 1
+                            if max_clips_per_vid <= clips_frm_this_vid:
+                                break
+                            i = i+1
     print('number of long videos:')
     print(n_video)
     print('number of short videos')
@@ -121,12 +134,14 @@ class VideoFolder(data.Dataset):
     """
 
     def __init__(self, root, nframes,  transform=None, target_transform=None,
-                 loader=default_loader, max_clips_per_vid=None, frame_offset='none'):
+                 loader=default_loader, max_clips_per_vid=None, frame_offset='none', subsample_factor=1):
         classes, class_to_idx = find_classes(root)
         self.max_clips_per_vid = np.inf if max_clips_per_vid is None else max_clips_per_vid
         self.frame_offset = 'none' if frame_offset is None else frame_offset
+        self.subsample_factor = 1 if subsample_factor is None else subsample_factor
 
-        imgs = make_dataset(root, nframes,  class_to_idx, self.max_clips_per_vid, self.frame_offset)
+        imgs = make_dataset(root, nframes,  class_to_idx, self.max_clips_per_vid, self.frame_offset,
+                            self.subsample_factor)
         if len(imgs) == 0:
             raise(RuntimeError("Found 0 images in subfolders of: " + root + "\n"
                                "Supported image extensions are: " + 

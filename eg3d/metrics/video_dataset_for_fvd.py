@@ -21,7 +21,7 @@ class VideoFolderDataset(torch.utils.data.Dataset):
     ):
         super().__init__()
         self.blur_sigma = blur_sigma
-        print(f'Video dataset with blur: {blur_sigma}')
+        print(f'Video dataset with blur: {blur_sigma}, subsample_factor:{subsample_factor}')
         self.name = os.path.splitext(os.path.basename(path))[0]
         self.resolution = resolution
         self.load_n_consecutive = load_n_consecutive

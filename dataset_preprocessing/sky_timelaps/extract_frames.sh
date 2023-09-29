@@ -13,8 +13,8 @@ run_id="$1"
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/sky_timelapse"
 
-vid_src_dir="/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_10_good_motions_10_motions/ffhq_X_10_good_motions_10_motions_all"
-dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ffhq_X_10_good_motions_10_motions"
+vid_src_dir="/is/cluster/fast/pghosh/datasets/sky_timelapse/train_clips"
+dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/sky_timelapse_32frames"
 
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/fasion_video_bdmm_all"
@@ -26,7 +26,7 @@ if [ ! -d "$vid_src_dir" ]; then
 fi
 
 # Define the number of videos to process per run
-vids_per_process=5000   # Adjust as needed
+vids_per_process=400   # Adjust as needed
 
 # Calculate start_index and end_index based on run_id and vids_per_process
 start_index=$((run_id * vids_per_process))
@@ -49,9 +49,9 @@ for ((i = start_index; i < end_index && i < ${#sorted_files[@]}; i++)); do
         fi
 
         # Use ffmpeg to extract frames into the corresponding directory
-#        ffmpeg -i "$video_file" -q:v 3 "$output_directory/frame%04d.jpg"
+        ffmpeg -i "$video_file" -q:v 3 "$output_directory/frame%04d.jpg"
 
-        ffmpeg -i "$video_file" -q:v 3 -vf "select='not(mod(n\,5))'" -vframes 32 "$output_directory/frame%04d.jpg"
+#        ffmpeg -i "$video_file" -q:v 3 -vf "select='not(mod(n\,5))'" -vframes 32 "$output_directory/frame%04d.jpg"
 
 
         echo "Extracted frames from $video_file to $output_directory/"
