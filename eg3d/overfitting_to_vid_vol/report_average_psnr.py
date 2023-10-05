@@ -15,7 +15,7 @@ def print_nested_dict(d, indent=0):
 def print_latex_lines(result_dict):
     for method in result_dict:  # one line each
         lat_line = f'{method} & '
-        for dataset in ['ffhq', 'fasion', 'video']:
+        for dataset in ['ffhq', 'fasion', 'train']:
             for inp_frame_num in ['3 frames', '8 frames']:
                 for metric in ['accum_ssim', 'accum_psnr']:
                     lat_line += f'{result_dict[method][inp_frame_num][dataset][metric]:.2f} &'

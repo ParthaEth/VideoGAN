@@ -42,7 +42,8 @@ class VideoFolderDataset(torch.utils.data.Dataset):
         reader = imageio.get_reader(fname, mode='I')
 
         self.start_frame_id = \
-            np.random.randint(0, 256 - self.load_n_consecutive) if self.load_n_consecutive_random_offset else 0
+            np.random.randint(0, reader.count_frames() - self.load_n_consecutive)\
+                if self.load_n_consecutive_random_offset else 0
         self.end_frame_id = self.load_n_consecutive * self.subsample_factor + self.start_frame_id
 
         vid_vol = []

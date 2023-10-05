@@ -25,6 +25,7 @@ from torch_utils import training_stats
 from torch_utils import custom_ops
 from torch_utils import misc
 from torch_utils.ops import conv2d_gradfix
+from training.triplane import TriPlaneGenerator
 
 #----------------------------------------------------------------------------
 
@@ -63,7 +64,7 @@ def subprocess_fn(rank, args, temp_dir):
         G = copy.deepcopy(args.G).eval().requires_grad_(False).to(device)
         if rank == 0 and args.verbose:
             z = torch.empty([2, G.z_dim], device=device)
-            c = torch.empty([2, G.c_dim], device=device)
+            c = torch.zeros([2, G.c_dim], device=device)
             misc.print_module_summary(G, [z, c])
 
     # Calculate each metric.
@@ -109,11 +110,13 @@ def parse_comma_separated_list(s):
               default=1, show_default=True)
 @click.option('--blur_sigma',   help='at what blur level should we evaluate metric',
               metavar='INT', type=click.FloatRange(min=0), required=True)
+@click.option('--cfg', 'config', type=str, help='Which configuration ffhq|sky_timelapse', default=None, show_default=True)
+@click.option('--reload_modules', help='Overload persistent modules?', type=bool, required=False, metavar='BOOL', default=False, show_default=True)
 
 
 
 def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose, truncation_psi, blur_sigma,
-                 subsample_factor_dat2):
+                 subsample_factor_dat2, config, reload_modules):
     """Calculate quality metrics for previous training run or pretrained network pickle.
 
     Examples:
@@ -161,14 +164,31 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose,
             ctx.fail('--network must point to a file or URL')
         if args.verbose:
             print(f'Loading network from "{network_pkl}"...')
-        with dnnlib.util.open_url(network_pkl, verbose=args.verbose) as f:
-            network_dict = legacy.load_network_pkl(f)
-            args.G = network_dict['G_ema'] # subclass of torch.nn.Module
+
+        with dnnlib.util.open_url(network_pkl) as f:
+            G = legacy.load_network_pkl(f)['G_ema']  # type: ignore
+
+        if reload_modules:
+            print("\n\n\n Reloading Modules! \n\n\n")
+            init_kwargs = copy.deepcopy(G.init_kwargs)
+            if config.lower() == 'ffhq':
+                init_kwargs.rendering_kwargs.update({'global_flow_div': 16, 'local_flow_div': 64})
+            elif config.lower() == 'sky_timelapse':
+                init_kwargs.rendering_kwargs.update({'global_flow_div': 16, 'local_flow_div': 16})
+            else:
+                raise ValueError(f'configuration {config} unknown')
+            # import ipdb; ipdb.set_trace()
+            G_new = TriPlaneGenerator(*G.init_args, **init_kwargs).eval().requires_grad_(False)
+            misc.copy_params_and_buffers(G, G_new, require_all=True)
+            args.G = G_new
+        else:
+            args.G = G
     else:
         args.G = None
         args.G_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data_2)
         args.G_kwargs.blur_sigma = 0
         args.G_kwargs.subsample_factor = subsample_factor_dat2
+        args.G_kwargs.load_n_consecutive_random_offset = False
 
     # Initialize dataset options.
     if data is not None:
@@ -183,6 +203,7 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose,
     if args.G is not None:
         args.dataset_kwargs.resolution = args.G.img_resolution
         args.dataset_kwargs.use_labels = (args.G.c_dim != 0)
+
     if mirror is not None:
         args.dataset_kwargs.xflip = mirror
 

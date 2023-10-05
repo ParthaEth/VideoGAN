@@ -14,6 +14,7 @@ ray, and computes pixel colors using the volume rendering equation.
 """
 
 import torch
+from torch_utils import persistence
 
 
 def generate_planes():
@@ -83,6 +84,8 @@ def sample_from_3dgrid(grid, coordinates):
     sampled_features = sampled_features.permute(0, 4, 3, 2, 1).reshape(N, H*W*D, C)
     return sampled_features
 
+
+@persistence.persistent_class
 class BaseRenderer(torch.nn.Module):
     def __init__(self, motion_features, appearance_features):
         super().__init__()
@@ -179,16 +182,18 @@ class BaseRenderer(torch.nn.Module):
         # import ipdb; ipdb.set_trace()
         generated_flow_mask = self.motion_encoder(lf_gfc_mask).clone()
 
+        gf_div, lf_dv = options['global_flow_div'], options['local_flow_div']
         # small Global flow ensured
         generated_flow_mask[:, :, :, :, 2:4] = \
-            generated_flow_mask[:, :, :, :, 2:4]/16 + identity_flow_and_mask[:, :, :, :, 2:4]  # just keeping flow low
+            generated_flow_mask[:, :, :, :, 2:4] / gf_div + identity_flow_and_mask[:, :, :, :, 2:4]  # just keeping flow low
         # mask is between -1 and 1, it will be later normalized
         # small-er local flow ensured
         generated_flow_mask[:, :, :, :, :2] = \
-            generated_flow_mask[:, :, :, :, :2] / 64 + identity_flow_and_mask[:, :, :, :, :2]  # just keeping flow low
+            generated_flow_mask[:, :, :, :, :2] / lf_dv + identity_flow_and_mask[:, :, :, :, :2]  # just keeping flow low
         return generated_flow_mask  # batch, rend_res, rend_res, rend_res, 5
 
 
+@persistence.persistent_class
 class AxisAligndProjectionRenderer(BaseRenderer):
     def __init__(self, return_video, motion_features, appearance_features):
         # self.neural_rendering_resolution = neural_rendering_resolution

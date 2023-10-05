@@ -10,11 +10,21 @@ run_id="$1"
 
 CC=gcc-7
 
-/home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python train_planes.py -r $run_id -dp True \
--vr '/is/cluster/fast/pghosh/datasets/ffhq_X_10_good_motions_10_motions/'
 
-/home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python train_planes.py -r $run_id -dp True \
--vr '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/'
+datasets=\
+("/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_10_good_motions_10_motions/ffhq_X_10_good_motions_10_motions_all" \
+"/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all" \
+"/is/cluster/fast/pghosh/datasets/sky_timelapse/train_clips")
 
-/home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python train_planes.py -r $run_id -dp True \
--vr '/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips'
+num_missing_frames=(3 8)
+
+feature_grid_type=("triplane" "3d_voxels" "positional_embedding")
+
+for dataset in "${datasets[@]}"; do
+  for nfm in "${num_missing_frames[@]}"; do
+    for fgt in "${feature_grid_type[@]}"; do
+      /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python train_planes.py -r $run_id -dp True \
+      -vr $dataset -nfm $nfm -fgt $fgt
+    done
+  done
+done

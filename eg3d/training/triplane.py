@@ -88,9 +88,9 @@ class TriPlaneGenerator(torch.nn.Module):
         # self.decoder.load_state_dict(pre_trained['decoder'])
         # # for param in self.renderer.parameters():
         # #     param.requires_grad = False
-        ########################### Load pre-trained ################################################### 
-
+        ########################### Load pre-trained ###################################################
         self.rendering_kwargs = rendering_kwargs
+        # import ipdb; ipdb.set_trace()
         self.rendering_kwargs['feature_grid_type'] = 'triplane'
         self._last_planes = None
         self.downscale4x = torchvision.transforms.Resize(64, antialias=True)
@@ -139,6 +139,7 @@ class TriPlaneGenerator(torch.nn.Module):
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
         #     self.renderer(planes, self.decoder, ray_origins, ray_directions, self.rendering_kwargs) # channels last
+        # import ipdb; ipdb.set_trace()
         rgb_image, peep_video, features, flows_and_masks = self.renderer(planes, self.decoder, c, None,
                                                                          self.rendering_kwargs)  # channels last
 

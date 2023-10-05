@@ -76,6 +76,8 @@ if __name__ == '__main__':
     argParser.add_argument("-dp", "--disable_progressbar", type=lambda x: str(x).lower() in ('true', '1'),
                            default='False', help="don't show progress")
     argParser.add_argument("-vr", "--video_root", type=str, required=True, help="Dataset root_dir")
+    argParser.add_argument("-nfm", "--num_missing_frames", type=int, required=True, help="Num frames to interpolate")
+    argParser.add_argument("-fgt", "--feature_grid_type", type=str, required=True, help="Feature grid type")
     args = argParser.parse_args()
 
     axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
@@ -103,7 +105,8 @@ if __name__ == '__main__':
     b_size = 16
     load_saved = False
     ssim = StructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)).to(device)
-    out_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting'
+    out_dir = f'/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/' \
+              f'{args.feature_grid_type}/{args.num_missing_frames} frames'
     os.makedirs(out_dir, exist_ok=True)
     # video_root = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/'
     args.video_root = args.video_root.rstrip('/')
@@ -112,7 +115,7 @@ if __name__ == '__main__':
     random.Random(seed).shuffle(videos)
     video_path = os.path.join(args.video_root, videos[args.rank])
     vid_vol = read_video_vol(video_path)  # c, h, w, t
-    num_missing_frames = 8
+    num_missing_frames = args.num_missing_frames
     total_frames = vid_vol.shape[-1]
     frame_start = np.random.randint(0, total_frames - num_missing_frames, 1)[0]
     missing_frame_ids = np.arange(frame_start, frame_start + num_missing_frames)
@@ -126,7 +129,7 @@ if __name__ == '__main__':
     vid_vol[:, :, :, missing_frame_ids] = 999
 
     # feature_grid_type = '3d_voxels'
-    feature_grid_type = 'positional_embedding'
+    feature_grid_type = args.feature_grid_type
     if feature_grid_type.lower() == 'triplane':
         feature_grid = torch.clip((1 / 30) * torch.randn(1, 1, plane_c, plane_h, plane_w,
                                                          dtype=torch.float32), min=-3, max=3).to(device)

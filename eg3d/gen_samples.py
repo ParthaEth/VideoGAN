@@ -168,8 +168,6 @@ def generate_images(
         print("Reloading Modules!")
         G_new = TriPlaneGenerator(*G.init_args, **G.init_kwargs).eval().requires_grad_(False).to(device)
         misc.copy_params_and_buffers(G, G_new, require_all=True)
-        G_new.neural_rendering_resolution = G.neural_rendering_resolution
-        G_new.rendering_kwargs = G.rendering_kwargs
         G = G_new
 
     os.makedirs(outdir, exist_ok=True)

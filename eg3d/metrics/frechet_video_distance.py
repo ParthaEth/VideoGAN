@@ -34,6 +34,10 @@ def compute_fvd(opts, max_real: int, num_gen: int, num_frames: int, subsample_fa
 
     opts.generated_dir.dataset_kwargs.load_n_consecutive = num_frames
     # opts.generated_dir.dataset_kwargs.subsample_factor = subsample_factor
+    if subsample_factor != 1 and opts.generated_dir.dataset_kwargs.subsample_factor != subsample_factor:
+        print('Warning: Different subsample factors are provided. This could be an error double check! '
+              f'Dataset subsample factor {subsample_factor}, Dataset 2 subsample_factor:'
+              f' {opts.generated_dir.dataset_kwargs.subsample_factor}')
     opts.generated_dir.cache = False
     mu_gen, sigma_gen = metric_utils.compute_video_feature_stats_for_dataset(
         opts=opts.generated_dir, detector_url=detector_url, detector_kwargs=detector_kwargs, rel_lo=0, rel_hi=0,

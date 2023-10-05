@@ -16,9 +16,8 @@ end_id=$((start_id + vids_p_run))
 
 CC=gcc-7
 
-#num_frames=160  # All others, then use sf ssfd2=5, in FVD computation
-num_frames=32  # All others, then use sf ssfd2=5, in FVD computation
-#num_frames=256  # Sky timelapse, Then use ssfd2=8, in FVD computation
+num_frames=160  # All others, then use sf ssfd2=5, in FVD computation
+#num_frames=32  # Sky time-lapse only, in FVD computation
 
 #echo "run_id = 000"
 #out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00000-ffhq-video_clips-gpus8-batch128-gamma1/\
@@ -30,11 +29,10 @@ num_frames=32  # All others, then use sf ssfd2=5, in FVD computation
 #--outdir=$out_dir --network=$network --seeds $start_id-$end_id --img_type sr_image --trunc=0.7 --show_flow False
 
 
-echo "run_id = 19"
-out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00019-ffhq-train_clips-gpus8-batch128-gamma1/videos"
-network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00019-ffhq-train_clips-gpus8-batch128-gamma1/\
-network-snapshot-005570.pkl"
+echo "run_id = 007"
+out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00027-ffhq-train_5th_frame-gpus8-batch128-gamma1/videos_l4X_g1X"
+network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00027-ffhq-train_5th_frame-gpus8-batch128-gamma1/network-snapshot-001638.pkl"
 
 /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
 --outdir=$out_dir --network=$network --seeds $start_id-$end_id --img_type sr_image --trunc=0.9 --show_flow False \
---num_frames $num_frames
+--num_frames $num_frames --reload_modules=True

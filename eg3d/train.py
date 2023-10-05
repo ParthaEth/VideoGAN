@@ -344,7 +344,7 @@ def main(**kwargs):
         'sr_antialias': True,
     }
 
-    if opts.cfg == 'ffhq':
+    if opts.cfg == 'ffhq' or opts.cfg == 'fashion_video':
         rendering_options.update({
             'depth_resolution': 48, # number of uniform samples to take per ray.
             'depth_resolution_importance': 48, # number of importance samples to take per ray.
@@ -353,27 +353,20 @@ def main(**kwargs):
             'box_warp': 1, # the side-length of the bounding box spanned by the tri-planes; box_warp=1 means [-0.5, -0.5, -0.5] -> [0.5, 0.5, 0.5].
             'avg_camera_radius': 2.7, # used only in the visualizer to specify camera orbit radius.
             'avg_camera_pivot': [0, 0, 0.2], # used only in the visualizer to control center of camera rotation.
+            'global_flow_div': 16,
+            'local_flow_div': 64
         })
-    elif opts.cfg == 'afhq':
+    elif opts.cfg == 'sky_timelapse':
         rendering_options.update({
-            'depth_resolution': 48,
-            'depth_resolution_importance': 48,
-            'ray_start': 2.25,
-            'ray_end': 3.3,
+            'depth_resolution': 48,  # number of uniform samples to take per ray.
+            'depth_resolution_importance': 48,  # number of importance samples to take per ray.
+            'ray_start': 2.25,  # near point along each ray to start taking samples.
+            'ray_end': 3.3,  # far point along each ray to stop taking samples.
             'box_warp': 1,
-            'avg_camera_radius': 2.7,
-            'avg_camera_pivot': [0, 0, -0.06],
-        })
-    elif opts.cfg == 'shapenet':
-        rendering_options.update({
-            'depth_resolution': 64,
-            'depth_resolution_importance': 64,
-            'ray_start': 0.1,
-            'ray_end': 2.6,
-            'box_warp': 1.6,
-            'white_back': True,
-            'avg_camera_radius': 1.7,
-            'avg_camera_pivot': [0, 0, 0],
+            'avg_camera_radius': 2.7,  # used only in the visualizer to specify camera orbit radius.
+            'avg_camera_pivot': [0, 0, 0.2],  # used only in the visualizer to control center of camera rotation.
+            'global_flow_div': 16,
+            'local_flow_div': 16
         })
     else:
         assert False, "Need to specify config"
