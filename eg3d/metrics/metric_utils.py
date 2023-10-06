@@ -364,7 +364,9 @@ def compute_feature_stats_for_dataset(opts, detector_url, detector_kwargs, rel_l
 
 #----------------------------------------------------------------------------
 
-def compute_feature_stats_for_generator(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=64, batch_gen=None, **stats_kwargs):
+
+def compute_feature_stats_for_generator(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=256,
+                                        batch_gen=None, **stats_kwargs):
     if batch_gen is None:
         batch_gen = min(batch_size, 4)
     assert batch_size % batch_gen == 0

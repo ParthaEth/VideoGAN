@@ -110,7 +110,7 @@ def parse_comma_separated_list(s):
               default=1, show_default=True)
 @click.option('--blur_sigma',   help='at what blur level should we evaluate metric',
               metavar='INT', type=click.FloatRange(min=0), required=True)
-@click.option('--cfg', 'config', type=str, help='Which configuration ffhq|sky_timelapse', default=None, show_default=True)
+@click.option('--cfg', 'config', type=str, help='Which configuration ffhq|sky_timelapse', required=True, show_default=True)
 @click.option('--reload_modules', help='Overload persistent modules?', type=bool, required=False, metavar='BOOL', default=False, show_default=True)
 
 
@@ -171,7 +171,7 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose,
         if reload_modules:
             print("\n\n\n Reloading Modules! \n\n\n")
             init_kwargs = copy.deepcopy(G.init_kwargs)
-            if config.lower() == 'ffhq':
+            if config.lower() == 'ffhq' or config.lower() == 'fashion_video':
                 init_kwargs.rendering_kwargs.update({'global_flow_div': 16, 'local_flow_div': 64})
             elif config.lower() == 'sky_timelapse':
                 init_kwargs.rendering_kwargs.update({'global_flow_div': 16, 'local_flow_div': 16})
