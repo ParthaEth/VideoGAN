@@ -30,9 +30,10 @@ num_frames=160  # All others, then use sf ssfd2=5, in FVD computation
 
 
 echo "run_id = 007"
-out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00027-ffhq-train_5th_frame-gpus8-batch128-gamma1/videos_l4X_g1X"
-network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00027-ffhq-train_5th_frame-gpus8-batch128-gamma1/network-snapshot-001638.pkl"
+out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00028-ffhq-train_5th_frame-gpus8-batch128-gamma1/Videos"
+network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00028-ffhq-train_5th_frame-gpus8-batch128-gamma1/network-snapshot-000901.pkl"
+cfg="sky_timelapse"
 
 /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
---outdir=$out_dir --network=$network --seeds $start_id-$end_id --img_type sr_image --trunc=0.9 --show_flow False \
---num_frames $num_frames --reload_modules=True
+--outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=0.9 --show_flow=False \
+--num_frames=$num_frames --reload_modules=True --cfg=$cfg

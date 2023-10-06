@@ -17,14 +17,12 @@ from typing import List, Optional, Tuple, Union
 import click
 import dnnlib
 import numpy as np
-import PIL.Image
 import torch
-from tqdm import tqdm
+import copy
 import imageio
 
 
 import legacy
-from camera_utils import LookAtPoseSampler, FOV_to_intrinsics
 from torch_utils import misc
 from training.triplane import TriPlaneGenerator
 from torchvision.utils import flow_to_image, make_grid
@@ -131,6 +129,7 @@ def get_identity_flow(rend_res, dtype, device):
 @click.option('--num_frames', help='total number of frames to generate. Thsi decided FPS. This will impact FVD'
                                    ' coputation. Should match how you subsample training data', type=int,
               required=True, metavar='int', show_default=True)
+@click.option('--cfg', 'config', type=str, help='Which configuration ffhq|sky_timelapse', required=True, show_default=True)
 
 def generate_images(
     network_pkl: str,
@@ -147,7 +146,8 @@ def generate_images(
     axis: str,
     img_type: str,
     show_flow: bool,
-    num_frames: int
+    num_frames: int,
+    config: str
 ):
     """Generate images using pretrained network pickle.
 
@@ -166,7 +166,16 @@ def generate_images(
     # Specify reload_modules=True if you want code modifications to take effect; otherwise uses pickled code
     if reload_modules:
         print("Reloading Modules!")
-        G_new = TriPlaneGenerator(*G.init_args, **G.init_kwargs).eval().requires_grad_(False).to(device)
+
+        init_kwargs = copy.deepcopy(G.init_kwargs)
+        if config.lower() == 'ffhq' or config.lower() == 'fashion_video':
+            init_kwargs.rendering_kwargs.update({'global_flow_div': 16, 'local_flow_div': 64})
+        elif config.lower() == 'sky_timelapse':
+            init_kwargs.rendering_kwargs.update({'global_flow_div': 16, 'local_flow_div': 16})
+        else:
+            raise ValueError(f'configuration {config} unknown')
+
+        G_new = TriPlaneGenerator(*G.init_args, **init_kwargs).eval().requires_grad_(False).to(device)
         misc.copy_params_and_buffers(G, G_new, require_all=True)
         G = G_new
 
