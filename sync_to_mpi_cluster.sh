@@ -2,8 +2,8 @@
 dir_to_sync='VideoGAN'
 usr=$1
 host_machine=$(hostname)
-dest_dir=never_eidt_from_cluster_remote_edit_loc
-#dest_dir=never_eidt_from_cluster_remote_edit_loc2
+#dest_dir=never_eidt_from_cluster_remote_edit_loc
+dest_dir=never_eidt_from_cluster_remote_edit_loc2
 while inotifywait -r --exclude '/\.' ../$dir_to_sync/*; do
   if [ "$host_machine" = "brown" ]; then
     rsync --exclude=".*" -av ../$dir_to_sync/ /is/cluster/$usr/repos/$dest_dir/$dir_to_sync &

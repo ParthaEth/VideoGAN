@@ -107,7 +107,7 @@ def launch_training(c, desc, outdir, dry_run):
         
     # Launch processes.
     print('Launching processes...')
-    torch.multiprocessing.set_start_method('spawn')
+    # torch.multiprocessing.set_start_method('spawn')
     with tempfile.TemporaryDirectory(dir='/dev/shm') as temp_dir:
         if c.num_gpus == 1:
             subprocess_fn(rank=0, c=c, temp_dir=temp_dir)
@@ -434,6 +434,7 @@ def main(**kwargs):
 #----------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    torch.multiprocessing.set_start_method('spawn')
     main() # pylint: disable=no-value-for-parameter
 
 #----------------------------------------------------------------------------

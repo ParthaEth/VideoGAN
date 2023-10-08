@@ -23,6 +23,8 @@ from pathlib import Path
 import shutil
 import imageio
 from scipy.ndimage import gaussian_filter
+import torchvision
+from torchvision import transforms
 
 
 try:
@@ -220,31 +222,46 @@ class VideoFolderDataset(Dataset):
         # self.peep_window_rescale_size = 32
         self.blur_sigma = blur_sigma
 
-        if os.path.isdir(self._path):
-            self._type = 'dir'
-            # self._all_fnames = {os.path.relpath(os.path.join(root, fname), start=self._path) for root, _dirs, files in os.walk(self._path) for fname in files}
-            # self._all_fnames = {os.path.join(self._path, f'{fname_idx:05d}.mp4') for fname_idx in range(50_000)}
-            self._all_fnames = {os.path.join(self._path, f_name) for f_name in sorted(os.listdir(self._path)) if f_name.endswith('.mp4')}
-        elif self._file_ext(self._path) == '.zip':
-            self._type = 'zip'
-            self._all_fnames = set(self._get_zipfile().namelist())
+        # import ipdb; ipdb.set_trace()
+
+        if self._path.lower().find('ucf101') >= 0:
+            name = 'UCF101'
+            root = os.path.join(self._path, 'UCF-101')
+            annotation_path = os.path.join(self._path, 'ucfTrainTestlist')
+            tforms = transforms.Compose([transforms.CenterCrop(240),
+                                         transforms.Resize(256)])
+            self.ucf_dataset = torchvision.datasets.UCF101(root, annotation_path, frames_per_clip=time_steps,
+                                                           step_between_clips=1, frame_rate=30, train=True,
+                                                           output_format='TCHW', transform=tforms)
+            n_clips = len(self.ucf_dataset)
+            raw_shape = [n_clips, 3, 256, 256]
         else:
-            raise IOError('Path must point to a directory or zip')
+            self.ucf_dataset = None
+            if os.path.isdir(self._path):
+                self._type = 'dir'
+                # self._all_fnames = {os.path.relpath(os.path.join(root, fname), start=self._path) for root, _dirs, files in os.walk(self._path) for fname in files}
+                # self._all_fnames = {os.path.join(self._path, f'{fname_idx:05d}.mp4') for fname_idx in range(50_000)}
+                self._all_fnames = {os.path.join(self._path, f_name) for f_name in sorted(os.listdir(self._path)) if f_name.endswith('.mp4')}
+            elif self._file_ext(self._path) == '.zip':
+                self._type = 'zip'
+                self._all_fnames = set(self._get_zipfile().namelist())
+            else:
+                raise IOError('Path must point to a directory or zip')
 
-        self._video_fnames = sorted(fname for fname in self._all_fnames if self._file_ext(fname) in ['.mp4'])
-        if len(self._video_fnames) == 0:
-            raise IOError('No video files found in the specified path')
+            self._video_fnames = sorted(fname for fname in self._all_fnames if self._file_ext(fname) in ['.mp4'])
+            if len(self._video_fnames) == 0:
+                raise IOError('No video files found in the specified path')
 
-        name = os.path.splitext(os.path.basename(self._path))[0]
-        raw_shape = [len(self._video_fnames)] + list(self._load_raw_image(0, skip_cache=True)[0].shape)
-        if raw_shape[1] != 3 and VideoFolderDataset.warning_displayed <= max_warnings:
-            VideoFolderDataset.warning_displayed += 1
-            print(f'\n\n\n\n\n\n\n\n\nWARNING{self.warning_displayed}: Generator cannot generate other than 3 color '
-                  f'channel. But we got {raw_shape[1]} color cannels. forcing 3 color channels. This might be an '
-                  f'error!!!')
-            raw_shape[1] = 3
-        if resolution is not None and (raw_shape[2] != resolution or raw_shape[3] != resolution):
-            raise IOError('Image files do not match the specified resolution')
+            name = os.path.splitext(os.path.basename(self._path))[0]
+            raw_shape = [len(self._video_fnames)] + list(self._load_raw_image(0, skip_cache=True)[0].shape)
+            if raw_shape[1] != 3 and VideoFolderDataset.warning_displayed <= max_warnings:
+                VideoFolderDataset.warning_displayed += 1
+                print(f'\n\n\n\n\n\n\n\n\nWARNING{self.warning_displayed}: Generator cannot generate other than 3 color '
+                      f'channel. But we got {raw_shape[1]} color cannels. forcing 3 color channels. This might be an '
+                      f'error!!!')
+                raw_shape[1] = 3
+            if resolution is not None and (raw_shape[2] != resolution or raw_shape[3] != resolution):
+                raise IOError('Image files do not match the specified resolution')
         super().__init__(name=name, raw_shape=raw_shape, **super_kwargs)
 
     @staticmethod
@@ -288,22 +305,26 @@ class VideoFolderDataset(Dataset):
 
     def _load_raw_image(self, raw_idx, skip_cache=False):
         # vid_vol = None
-        fname = self._video_fnames[raw_idx]
-        if getattr(self, 'cache_dir', None) is None or skip_cache:
-            with self._open_file(fname) as f:
-                vid_vol = self.read_vid_from_file(fname)
-        else:
-            fname = os.path.basename(fname)
-            vid_vol = self.get_from_cached(fname)
-            if vid_vol is None:
-                # print(f'Cache miss! {fname}') 
-                self.write_to_cache(fname)
+        if self.ucf_dataset is None:
+            fname = self._video_fnames[raw_idx]
+            if getattr(self, 'cache_dir', None) is None or skip_cache:
+                with self._open_file(fname) as f:
+                    vid_vol = self.read_vid_from_file(fname)
+            else:
+                fname = os.path.basename(fname)
                 vid_vol = self.get_from_cached(fname)
+                if vid_vol is None:
+                    # print(f'Cache miss! {fname}')
+                    self.write_to_cache(fname)
+                    vid_vol = self.get_from_cached(fname)
 
-        if 0 < self.time_steps < vid_vol.shape[-1]/5:
-            vid_vol = vid_vol[:, :, :, ::5][:, :, :, :self.time_steps]
+            if 0 < self.time_steps < vid_vol.shape[-1]/5:
+                vid_vol = vid_vol[:, :, :, ::5][:, :, :, :self.time_steps]
+            else:
+                self.time_steps = vid_vol.shape[-1]
         else:
-            self.time_steps = vid_vol.shape[-1]
+            vid_vol = self.ucf_dataset[raw_idx][0].permute(1, 2, 3, 0)
+            # import ipdb; ipdb.set_trace()
 
         # vid vol shape = (3, 256, 256, 32)
         vid_vol = gaussian_filter(vid_vol.transpose((1, 2, 3, 0)),
