@@ -22,6 +22,8 @@ import time
 from pathlib import Path
 import shutil
 import imageio
+from scipy.ndimage import gaussian_filter
+
 
 
 try:
@@ -293,6 +295,11 @@ class VideoFolderDataset(Dataset):
                 vid_vol = self.get_from_cached(fname)
 
         vid_vol = vid_vol[:, :, :, :self.time_steps]
+
+        vid_vol = gaussian_filter(vid_vol.transpose((1, 2, 3, 0)),
+                                  sigma=(10, 10),
+                                  axes=(0, 1)).transpose((3, 0, 1, 2))
+
         _, _, resolution, _ = vid_vol.shape
         frame_location = np.random.randint(0, self.time_steps, 1)[0]
         if self.return_video:
