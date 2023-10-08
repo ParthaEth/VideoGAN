@@ -226,10 +226,11 @@ class VideoFolderDataset(Dataset):
 
         if self._path.lower().find('ucf101') >= 0:
             name = 'UCF101'
+            # root = os.path.join(self._path, 'UCF-101_debug')
             root = os.path.join(self._path, 'UCF-101')
             annotation_path = os.path.join(self._path, 'ucfTrainTestlist')
             tforms = transforms.Compose([transforms.CenterCrop(240),
-                                         transforms.Resize(256)])
+                                         transforms.Resize(256, antialias=True)])
             self.ucf_dataset = torchvision.datasets.UCF101(root, annotation_path, frames_per_clip=time_steps,
                                                            step_between_clips=1, frame_rate=30, train=True,
                                                            output_format='TCHW', transform=tforms)
@@ -323,13 +324,11 @@ class VideoFolderDataset(Dataset):
             else:
                 self.time_steps = vid_vol.shape[-1]
         else:
-            vid_vol = self.ucf_dataset[raw_idx][0].permute(1, 2, 3, 0)
+            vid_vol = self.ucf_dataset[raw_idx][0].permute(1, 2, 3, 0).numpy()
             # import ipdb; ipdb.set_trace()
 
         # vid vol shape = (3, 256, 256, 32)
-        vid_vol = gaussian_filter(vid_vol.transpose((1, 2, 3, 0)),
-                                  sigma=(self.blur_sigma, self.blur_sigma),
-                                  axes=(0, 1)).transpose((3, 0, 1, 2))
+        vid_vol = gaussian_filter(vid_vol, sigma=(self.blur_sigma, self.blur_sigma), axes=(1, 2))
 
         # # also time domain blur
         # vid_vol = gaussian_filter(vid_vol.transpose((1, 2, 3, 0)),
