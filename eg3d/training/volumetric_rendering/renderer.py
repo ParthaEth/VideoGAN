@@ -62,7 +62,6 @@ def sample_from_planes(plane_axes, plane_features, coordinates, mode='bilinear',
     # coordinates = (2/box_warp) * coordinates # TODO: add specific box bounds
 
     projected_coordinates = project_onto_planes(plane_axes, coordinates).unsqueeze(1)
-    # import ipdb; ipdb.set_trace()
     output_features = torch.nn.functional.grid_sample(plane_features, projected_coordinates.float(), mode=mode,
                                                       padding_mode=padding_mode, align_corners=False)
     output_features = output_features.permute(0, 3, 2, 1).reshape(N, n_planes, M, C)
@@ -195,12 +194,14 @@ class BaseRenderer(torch.nn.Module):
 
 @persistence.persistent_class
 class AxisAligndProjectionRenderer(BaseRenderer):
-    def __init__(self, return_video, motion_features, appearance_features):
+    def __init__(self, return_video, motion_features, appearance_features, use_flow=True):
         # self.neural_rendering_resolution = neural_rendering_resolution
         self.return_video = return_video
         super().__init__(motion_features, appearance_features)
         self.appearance_volume = None
         self.lf_gfc_mask = None
+        self.use_flow = use_flow
+        self.planes = None
 
     def forward_warp(self, feature_frame, grid):
         return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=True)
@@ -254,20 +255,30 @@ class AxisAligndProjectionRenderer(BaseRenderer):
     def get_rgb_given_coordinate(self, decoder, sample_coordinates, options, bypass_network=False):
         batch, n_pt, dims = sample_coordinates.shape
         assert dims == 3
-        sample_coordinates = sample_coordinates.reshape(batch, 1, 1, n_pt, dims)  # dims := (h, w, t)
-        # self.appearance_volume: batch, app_feat, t, h, w
-        # Sample cods are flipping h and w in the following grid sample. swap appearnace feature h, w dims?
-        sampled_features = torch.nn.functional.grid_sample(self.appearance_volume, sample_coordinates,
-                                                           align_corners=True, padding_mode='border').squeeze()
-        # sampled_features := batch, ch, 1, 1, n_pt -> squeez -> batch, ch, n_pt
-        sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
-        # import ipdb; ipdb.set_trace()
+        if self.use_flow:
+            sample_coordinates = sample_coordinates.reshape(batch, 1, 1, n_pt, dims)  # dims := (h, w, t)
+            # self.appearance_volume: batch, app_feat, t, h, w
+            # Sample cods are flipping h and w in the following grid sample. swap appearnace feature h, w dims?
+            sampled_features = torch.nn.functional.grid_sample(self.appearance_volume, sample_coordinates,
+                                                               align_corners=True, padding_mode='border').squeeze()
+            # sampled_features := batch, ch, 1, 1, n_pt -> squeez -> batch, ch, n_pt
+            sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
+            # import ipdb; ipdb.set_trace()
 
-        # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),
-        # 5 =((w, h), (w, h), mask), # sample_coordinates: (batch, npts, dims (dims := h, w, t))
-        # But grid sample assumes sample cods to have depth, with, height ordering so the permutation
-        flows_and_mask = torch.nn.functional.grid_sample(self.lf_gfc_mask.permute(0, 4, 3, 1, 2), sample_coordinates,
-                                                         align_corners=True, padding_mode='border').squeeze()
+            # self.lf_gfc_mask is of shape batch, rend_res (height), rend_res (width), rend_res (depth=t),
+            # 5 =((w, h), (w, h), mask), # sample_coordinates: (batch, npts, dims (dims := h, w, t))
+            # But grid sample assumes sample cods to have depth, with, height ordering so the permutation
+            flows_and_mask = torch.nn.functional.grid_sample(self.lf_gfc_mask.permute(0, 4, 3, 1, 2), sample_coordinates,
+                                                             align_corners=True, padding_mode='border').squeeze()
+        else:
+            flows_and_mask = None
+
+            sampled_features = sample_from_planes(self.plane_axes, self.planes, sample_coordinates,
+                                                  padding_mode='zeros')
+            sampled_features = sampled_features.permute(0, 2, 1, 3)  # batch, num_pts, planes, pln_ch
+            sampled_features = sampled_features.reshape(batch, n_pt, -1)  # batch, num_pts, planes * pln_ch
+            # print('bypassing FLOW!')
+
         out = decoder(sampled_features,
                       full_rendering_res=(options['neural_rendering_resolution'],
                                           options['neural_rendering_resolution'],
@@ -284,13 +295,16 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         device = feature_grid.device
         datatype = feature_grid.dtype
         # self.plane_axes = self.plane_axes.to(device)
-        self.prepare_feature_volume(feature_grid, rendering_options, bypass_network=False)
-
         if rendering_options.get('feature_grid_type', 'triplane').lower() == 'triplane':
-            batch_size, num_planes, _, _, _ = feature_grid.shape
-            assert num_planes == 1, 'right now appearance planes and 3 flow planes are all in channel dim'
+            batch_size, num_planes, ch, h, w = feature_grid.shape
+            # assert num_planes == 1, 'right now appearance planes and 3 flow planes are all in channel dim'
         else:
             batch_size, _, _, _, _ = feature_grid.shape
+
+        if self.use_flow:
+            self.prepare_feature_volume(feature_grid, rendering_options, bypass_network=False)
+        else:
+            self.planes = feature_grid
 
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
         axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5

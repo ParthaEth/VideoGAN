@@ -222,6 +222,7 @@ def parse_comma_separated_list(s):
 @click.option('--up_factor',  help='Up the latent code resolution by this factor from stem', type=click.IntRange(min=2), default=None, show_default=True)
 @click.option('--blur_sigma',   help='Blur the true data so we can train a low latent res model first', metavar='INT', type=click.FloatRange(min=0), required=True)
 @click.option('--apply_crop',   help='apply left and right cop to avoid sharp edges for fashion data', metavar='BOOL', type=bool, required=True, default=False)
+@click.option('--use_flow',   help='use a flwo based renderer or not', metavar='BOOL', type=bool, required=True, default=True)
 
 
 def main(**kwargs):
@@ -376,6 +377,7 @@ def main(**kwargs):
     if opts.density_reg > 0:
         c.G_reg_interval = opts.density_reg_every
     c.G_kwargs.rendering_kwargs = rendering_options
+    c.G_kwargs.use_flow = opts.use_flow
     c.G_kwargs.num_fp16_res = 0
     c.loss_kwargs.blur_init_sigma = 2  # Blur the images seen by the discriminator.
     c.loss_kwargs.blur_fade_kimg = opts.blur_fade_kimg # Fade out the blur during the first N kimg.
