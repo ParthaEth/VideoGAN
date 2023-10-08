@@ -151,7 +151,7 @@ class BaseRenderer(torch.nn.Module):
         """
 
         batch, _, _, _, _ = feature_grid.shape
-        rend_res = options['neural_rendering_resolution']
+        rend_res = options['neural_rendering_resolution'] * 2
         # default to triplane type for backward comp
         feature_grid_type = options.get('feature_grid_type', 'triplane')
         dtype, device = feature_grid.dtype, feature_grid.device
@@ -162,6 +162,7 @@ class BaseRenderer(torch.nn.Module):
             # lf_gfc_mask is of shape batch, planes, num_pts, pln_chnls; with planes == 3
             # import ipdb; ipdb.set_trace()
             lf_gfc_mask = lf_gfc_mask.permute(0, 2, 1, 3)  # lf_gfc_mask is of shape batch, num_pts, planes, pln_chnls
+            # import ipdb; ipdb.set_trace()
             # lf_gfc_mask is of shape batch, num_pts, planes*pln_chnls
         elif feature_grid_type.lower() == '3d_voxels' or 'positional_embedding':
             # feature_grid of shape batch, channel, height, width, depth
@@ -207,7 +208,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
 
     def prepare_feature_volume(self, feature_grid, options, bypass_network=False):
         """Plane: a torch tensor b, 1, 38, h, w"""
-        rend_res = options['neural_rendering_resolution']
+        rend_res = options['neural_rendering_resolution'] // 2
         # fist self.motion_features are assumed to be motion features
         feature_grid_type = options.get('feature_grid_type', 'triplane')  # default to triplane type for backward comp
         if feature_grid_type.lower() == 'triplane':
@@ -232,6 +233,8 @@ class AxisAligndProjectionRenderer(BaseRenderer):
 
         appearance_volume = []
         prev_frame = None
+        # When we have high spatial res, this might be 4X smaller for memory
+        # In this case time is not sampled in such detail
         for time_id in range(rend_res):
             global_features = self.forward_warp(global_appearance_features.permute(0, 1, 3, 2),
                                                 self.lf_gfc_mask[:, :, :, time_id, 2:4])
@@ -293,8 +296,8 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             batch_size, _, _, _, _ = feature_grid.shape
 
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
-        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
-        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
+        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.125
+        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.125
         if self.return_video:  # Remove hack
             # import ipdb; ipdb.set_trace()
             assert(torch.all(-0.01 <= c[:, 3]) and torch.all(c[:, 3] <= 1.01))
@@ -354,7 +357,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
                 cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2,
                                        video_spatial_res, dtype=datatype, device=device)
                 cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
-                grid_x, grid_y, grid_z = torch.meshgrid(cod_x * 0.5, cod_y * 0.5, cod_z, indexing='ij')
+                grid_x, grid_y, grid_z = torch.meshgrid(cod_x * 0.125, cod_y * 0.125, cod_z, indexing='ij')
                 coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
                 video_coordinates.append(coordinates)
 

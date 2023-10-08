@@ -63,7 +63,8 @@ class TriPlaneGenerator(torch.nn.Module):
         if not isinstance(data_blur_sigma, str):
             data_blur_sigma = f'{data_blur_sigma:.2f}'
         # blur_to_res = {'10.00': 16, '5.00': 32, '2.50': 64, '1.25': 128, '0.00': 256}
-        blur_to_res = {'10.00': 16, '5.00': 16, '2.50': 32, '1.25': 64, '0.00': 128}
+        # blur_to_res = {'10.00': 16, '5.00': 16, '2.50': 32, '1.25': 64, '0.00': 128}
+        blur_to_res = {'10.00': 32, '5.00': 32, '2.50': 64, '1.25': 128, '0.00': 256}
         # self.backbone = StyleGANXLBackbone(z_dim, c_dim, w_dim, img_resolution=blur_to_res[data_blur_sigma],
         #                                    img_channels=self.appearance_features + self.motion_features,
         #                                    mapping_kwargs=mapping_kwargs, path_stem=path_stem, head_layers=head_layers,

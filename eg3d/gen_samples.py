@@ -174,7 +174,7 @@ def generate_images(
             init_kwargs.rendering_kwargs.update({'global_flow_div': 16, 'local_flow_div': 16})
         else:
             raise ValueError(f'configuration {config} unknown')
-
+        
         G_new = TriPlaneGenerator(*G.init_args, **init_kwargs).eval().requires_grad_(False).to(device)
         misc.copy_params_and_buffers(G, G_new, require_all=True)
         G = G_new
