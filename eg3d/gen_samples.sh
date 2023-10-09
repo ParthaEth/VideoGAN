@@ -36,4 +36,4 @@ cfg="sky_timelapse"
 
 /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
 --outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=0.9 --show_flow=False \
---num_frames=$num_frames --reload_modules=False --cfg=$cfg
+--num_frames=$num_frames --reload_modules=True --cfg=$cfg --use_flow=False

@@ -130,6 +130,7 @@ def get_identity_flow(rend_res, dtype, device):
                                    ' coputation. Should match how you subsample training data', type=int,
               required=True, metavar='int', show_default=True)
 @click.option('--cfg', 'config', type=str, help='Which configuration ffhq|sky_timelapse', required=True, show_default=True)
+@click.option('--use_flow', help='Use flow after triplane or not', type=bool, required=False, metavar='BOOL', default=False, show_default=True)
 
 def generate_images(
     network_pkl: str,
@@ -147,7 +148,8 @@ def generate_images(
     img_type: str,
     show_flow: bool,
     num_frames: int,
-    config: str
+    config: str,
+    use_flow: bool
 ):
     """Generate images using pretrained network pickle.
 
@@ -168,6 +170,7 @@ def generate_images(
         print("Reloading Modules!")
 
         init_kwargs = copy.deepcopy(G.init_kwargs)
+        init_kwargs['use_flow'] = use_flow
         if config.lower() == 'ffhq' or config.lower() == 'fashion_video':
             init_kwargs.rendering_kwargs.update({'global_flow_div': 16, 'local_flow_div': 64})
         elif config.lower() == 'sky_timelapse':
@@ -226,9 +229,8 @@ def generate_images(
             if b_id == 0:
                 local_warped = img_batch
 
+            img_batch = (img_batch * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
             if show_flow:
-                img_batch = (img_batch * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
-
                 flows_and_masks = g_out['flows_and_masks'].reshape(b_size, 5, G.neural_rendering_resolution,
                                                                    G.neural_rendering_resolution)
                 flows_and_masks = torch.nn.functional.interpolate(flows_and_masks, img_batch.shape[-1])
