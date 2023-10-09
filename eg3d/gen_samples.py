@@ -226,19 +226,20 @@ def generate_images(
             if b_id == 0:
                 local_warped = img_batch
 
-            img_batch = (img_batch * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
+            if show_flow:
+                img_batch = (img_batch * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
 
-            flows_and_masks = g_out['flows_and_masks'].reshape(b_size, 5, G.neural_rendering_resolution,
-                                                               G.neural_rendering_resolution)
-            flows_and_masks = torch.nn.functional.interpolate(flows_and_masks, img_batch.shape[-1])
-            # import ipdb; ipdb.set_trace()
-            local_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 0:2]).flip([1,]))
-            global_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 2:4]).flip([1,]))
-            mask = (flows_and_masks[:, 4:5] * 127.5 + 127.5).expand(-1, 3, -1, -1).to(torch.uint8)
-            # import ipdb; ipdb.set_trace()
+                flows_and_masks = g_out['flows_and_masks'].reshape(b_size, 5, G.neural_rendering_resolution,
+                                                                   G.neural_rendering_resolution)
+                flows_and_masks = torch.nn.functional.interpolate(flows_and_masks, img_batch.shape[-1])
+                # import ipdb; ipdb.set_trace()
+                local_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 0:2]).flip([1,]))
+                global_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 2:4]).flip([1,]))
+                mask = (flows_and_masks[:, 4:5] * 127.5 + 127.5).expand(-1, 3, -1, -1).to(torch.uint8)
+                # import ipdb; ipdb.set_trace()
 
-            high_res_flow = (identity_grid[None] -
-                             (identity_grid[None] - flows_and_masks[:, 0:2])/sup_res_factor).permute(0, 2, 3, 1) * 2
+                high_res_flow = (identity_grid[None] -
+                                 (identity_grid[None] - flows_and_masks[:, 0:2])/sup_res_factor).permute(0, 2, 3, 1) * 2
             for i in range(b_size):
                 # import ipdb; ipdb.set_trace()
                 # peep_frame = g_out['peep_vid'][0:1, :, :, :, b_id*b_size + i]
@@ -256,10 +257,11 @@ def generate_images(
                     video_frame = img_batch[i]
 
                 video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
-                local_warped = torch.nn.functional.grid_sample(
-                    local_warped[0:1],  # .permute(0, 1, 3, 2),
-                    high_res_flow[i:i + 1],
-                    align_corners=True, )
+                if show_flow:
+                    local_warped = torch.nn.functional.grid_sample(
+                        local_warped[0:1],  # .permute(0, 1, 3, 2),
+                        high_res_flow[i:i + 1],
+                        align_corners=True, )
 
         video_out.close()
 
