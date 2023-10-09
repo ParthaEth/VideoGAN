@@ -3,52 +3,53 @@ import os
 import numpy as np
 import imageio
 import tqdm
+import copy
 from torch.utils.data import DataLoader
-from video_folder import VideoFolder
+from torchvision import transforms
+from multiprocessing import Pool
 
 
-def write_video(video_dest_path, vid):
+def write_video(path_and_vid):
+    video_dest_path, vid = path_and_vid
     vid = vid.numpy().astype(np.uint8)
     video_out = imageio.get_writer(video_dest_path, mode='I', fps=30, codec='libx264')
     for video_frame in vid:
         video_out.append_data(video_frame)
     video_out.close()
 
-# train
-root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/sky_train'
-# root = '/is/cluster/fast/pghosh/datasets/sky_timelapse_256'
-# dest_root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips'
-dest_root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/train_5th_frame'
 
-os.makedirs(dest_root, exist_ok=False)
+if __name__ == '__main__':
+    saving_workers = 16
+    time_steps = 160
+    dataset_type = 'train'
+    # dataset_type = 'test'
+    # base_path = '/dev/shm/ucf/ucf101/'
+    base_path = '/is/cluster/fast/pghosh/datasets/ucf101/'
+    base_path_dest = '/is/cluster/fast/pghosh/datasets/ucf101/'
+    root = os.path.join(base_path, 'UCF-101')
+    annotation_path = os.path.join(base_path, 'ucfTrainTestlist')
+    tforms = transforms.Compose([transforms.CenterCrop(240),
+                                 transforms.Resize(256, antialias=True)])
+    ucf_dataset = torchvision.datasets.UCF101(root, annotation_path, frames_per_clip=time_steps,
+                                              step_between_clips=5, frame_rate=30, train=(dataset_type == 'train'),
+                                              output_format='TCHW', transform=tforms, num_workers=8,)
+    # dataloader = DataLoader(ucf_dataset, batch_size=saving_workers, shuffle=False, num_workers=8, prefetch_factor=2)
 
-# test
-# root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/sky_test'
-# dest_root = '/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips_test'
-
-# nframes = 128
-# max_clips_per_vid = 1
-# frame_offset = 'random'
-
-nframes = 32
-max_clips_per_vid = None  # dumps all possible clips
-frame_offset = None  # offset is set to 0
-subsample_factor = 5
-
-transforms = torchvision.transforms.Compose([torchvision.transforms.CenterCrop(360),
-                                             torchvision.transforms.Resize(256),
-                                             torchvision.transforms.ToTensor()])
-
-data_set = VideoFolder(root, nframes, transforms, max_clips_per_vid=max_clips_per_vid, frame_offset=frame_offset,
-                       subsample_factor=5)
-dataloader = DataLoader(data_set, batch_size=1, shuffle=False, num_workers=10)
-
-vid_count = 0
-max_vid_cnt = np.inf  # dumps all videos in dataset
-# max_vid_cnt = 2049  # dumps all videos in dataset
-for vid_id, (vid_b, label) in enumerate(tqdm.tqdm(dataloader)):
-    video_dest_path = os.path.join(dest_root, f'{vid_id:05d}.mp4')
-    write_video(video_dest_path, vid_b[0].permute(1, 2, 3, 0) * 255)  # centre top crop
-    vid_count += 1
-    if vid_count >= max_vid_cnt:
-        break
+    vid_count = 0
+    max_vid_cnt = np.inf  # dumps all videos in dataset
+    # max_vid_cnt = 2049  # dumps all videos in dataset
+    # import ipdb; ipdb.set_trace()
+    clip_num = 0
+    with Pool(saving_workers) as p:
+        for batch_id in tqdm.tqdm(range(len(ucf_dataset) // saving_workers)):
+            process_args = []
+            for i in range(saving_workers):
+                clip_num = batch_id * saving_workers + i
+                vid, _, _ = ucf_dataset[clip_num]
+                video_dest_path = os.path.join(base_path_dest, f'clips/{dataset_type}_{clip_num:05d}.mp4')
+                video = copy.deepcopy(vid.permute(0, 2, 3, 1))
+                process_args.append((video_dest_path, video))
+            p.map(write_video, process_args)
+            vid_count += 1
+            if vid_count >= max_vid_cnt:
+                break
