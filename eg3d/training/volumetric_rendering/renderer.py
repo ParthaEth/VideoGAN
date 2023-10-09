@@ -204,7 +204,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         self.lf_gfc_mask = None
 
     def forward_warp(self, feature_frame, grid):
-        return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=True)
+        return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=True, padding_mode='reflection')
 
     def prepare_feature_volume(self, feature_grid, options, bypass_network=False):
         """Plane: a torch tensor b, 1, 38, h, w"""
