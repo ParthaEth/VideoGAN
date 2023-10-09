@@ -29,9 +29,9 @@ num_frames=160  # All others, then use sf ssfd2=5, in FVD computation
 #--outdir=$out_dir --network=$network --seeds $start_id-$end_id --img_type sr_image --trunc=0.7 --show_flow False
 
 
-echo "run_id = 035"
-out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00035-sky_timelapse-train_5th_frame-gpus8-batch128-gamma1/videos"
-network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00035-sky_timelapse-train_5th_frame-gpus8-batch128-gamma1/network-snapshot-000983.pkl"
+echo "run_id = 034"
+out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00034-sky_timelapse-train_5th_frame-gpus8-batch128-gamma1/videos"
+network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00034-sky_timelapse-train_5th_frame-gpus8-batch128-gamma1/network-snapshot-001310.pkl"
 cfg="sky_timelapse"
 
 /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \

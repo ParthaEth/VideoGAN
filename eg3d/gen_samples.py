@@ -257,10 +257,11 @@ def generate_images(
                     video_frame = img_batch[i]
 
                 video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
-                local_warped = torch.nn.functional.grid_sample(
-                    local_warped[0:1],  # .permute(0, 1, 3, 2),
-                    high_res_flow[i:i + 1],
-                    align_corners=True, )
+                if show_flow:
+                    local_warped = torch.nn.functional.grid_sample(
+                        local_warped[0:1],  # .permute(0, 1, 3, 2),
+                        high_res_flow[i:i + 1],
+                        align_corners=True, )
 
         video_out.close()
 
