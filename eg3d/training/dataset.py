@@ -300,7 +300,7 @@ class VideoFolderDataset(Dataset):
                 self.write_to_cache(fname)
                 vid_vol = self.get_from_cached(fname)
 
-        if 0 < self.time_steps < vid_vol.shape[-1]/5:
+        if 0 < self.time_steps <= vid_vol.shape[-1]/5:
             vid_vol = vid_vol[:, :, :, ::5][:, :, :, :self.time_steps]
         else:
             self.time_steps = vid_vol.shape[-1]

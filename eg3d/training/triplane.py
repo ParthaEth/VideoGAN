@@ -76,7 +76,7 @@ class TriPlaneGenerator(torch.nn.Module):
         else:
             self.tot_feature_dim = self.appearance_features * self.num_planes
             OSGDecoder_imp_dim = self.tot_feature_dim
-            
+
         self.backbone = StyleGANTBackbone(z_dim, c_dim=c_dim, w_dim=w_dim, img_resolution=blur_to_res[data_blur_sigma],
                                           img_channels=self.tot_feature_dim,
                                           conditional=False, path_stem=path_stem, **synthesis_kwargs)
