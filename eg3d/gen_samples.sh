@@ -30,8 +30,8 @@ num_frames=160  # All others, then use sf ssfd2=5, in FVD computation
 
 
 echo "run_id = ucf"
-out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00000-ffhq-UCF101-gpus8-batch128-gamma1/videos"
-network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00000-ffhq-UCF101-gpus8-batch128-gamma1/network-snapshot-002130.pkl"
+out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00002-ffhq--gpus8-batch128-gamma1/videos"
+network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00002-ffhq--gpus8-batch128-gamma1/network-snapshot-001556.pkl"
 cfg="ffhq"
 
 /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
