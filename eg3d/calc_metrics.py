@@ -190,12 +190,13 @@ def calc_metrics(ctx, network_pkl, metrics, data, data_2, mirror, gpus, verbose,
         args.G_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data_2)
         args.G_kwargs.blur_sigma = 0
         args.G_kwargs.subsample_factor = subsample_factor_dat2
-        args.G_kwargs.load_n_consecutive_random_offset = False
+        args.G_kwargs.load_n_consecutive_random_offset = True
 
     # Initialize dataset options.
     if data is not None:
         args.dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.VideoFolderDataset', path=data)
         args.dataset_kwargs.blur_sigma = blur_sigma
+        args.dataset_kwargs.load_n_consecutive_random_offset = True
     elif network_dict['training_set_kwargs'] is not None:
         args.dataset_kwargs = dnnlib.EasyDict(network_dict['training_set_kwargs'])
     else:
