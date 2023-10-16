@@ -79,7 +79,8 @@ class TriPlaneGenerator(torch.nn.Module):
 
         self.backbone = StyleGANTBackbone(z_dim, c_dim=c_dim, w_dim=w_dim, img_resolution=blur_to_res[data_blur_sigma],
                                           img_channels=self.tot_feature_dim,
-                                          conditional=False, path_stem=path_stem, **synthesis_kwargs)
+                                          conditional=False, path_stem=path_stem, use_style_gan3_layers=True,
+                                          **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
@@ -87,7 +88,7 @@ class TriPlaneGenerator(torch.nn.Module):
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
                                    'decoder_output_dim': 32})
 
-        ########################### Load pre-trained ###################################################
+        ########################### Load pre-trained ####################################################
         # pre_trained = torch.load('/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
         #                          'rend_and_dec_256_rend.pytorch')
         # self.renderer.load_state_dict(pre_trained['renderer'])

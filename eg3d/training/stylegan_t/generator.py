@@ -24,6 +24,7 @@ from torch_utils.ops import upfirdn2d, conv2d_resample, bias_act, fma
 from .shared import FullyConnectedLayer, MLP
 import dnnlib
 import legacy
+from .synthesis_layer_stg3 import SynthesisLayer as SynthesisLayerSTG3
 # from .clip import CLIP
 
 
@@ -333,13 +334,14 @@ class SynthesisBlock(torch.nn.Module):
         resolution: int,                                # Resolution of this block.
         img_channels: int,                              # Number of output color channels.
         is_last: bool,                                  # Is this the last block?
-        num_res_blocks: int = 1,                            # Number of conv layers per block.
+        num_res_blocks: int = 1,                        # Number of conv layers per block.
         architecture: str = 'orig',                     # Architecture: 'orig', 'skip'.
         resample_filter: list[int] = [1,3,3,1],         # Low-pass filter to apply when resampling activations.
         conv_clamp: int = 256,                          # Clamp the output of convolution layers to +-X, None = disable clamping.
         use_fp16: bool = False,                         # Use FP16 for this block?
         fp16_channels_last: bool = False,               # Use channels-last memory format with FP16?
         fused_modconv_default: Any = 'inference_only',  # Default value of fused_modconv.
+        use_style_gan3_layers: bool = False,
         **layer_kwargs,                                 # Arguments for SynthesisLayer.
     ):
         assert architecture in ['orig', 'skip']
@@ -358,29 +360,89 @@ class SynthesisBlock(torch.nn.Module):
         self.num_conv = 0
         self.num_torgb = 0
 
+        # Geometric progression of layer cutoffs and min. stopbands.
+        last_cutoff = self.resolution / 2  # f_{c,N}
+        last_stopband_rel = 2 ** 0.3
+        first_cutoff = 2
+        first_stopband = 2 ** 2.1
+        last_stopband = last_cutoff * last_stopband_rel  # f_{t,N}
+        exponents = np.minimum(np.arange(self.num_layers + 1) / (self.num_layers - self.num_critical), 1)
+        cutoffs = first_cutoff * (last_cutoff / first_cutoff) ** exponents  # f_c[i]
+        stopbands = first_stopband * (last_stopband / first_stopband) ** exponents  # f_t[i]
+
+        # Compute remaining layer parameters.
+        sampling_rates = np.exp2(np.ceil(np.log2(np.minimum(stopbands * 2, resolution))))  # s[i]
+        half_widths = np.maximum(stopbands, sampling_rates / 2) - cutoffs  # f_h[i]
+
         if in_channels == 0:
             self.input = SynthesisInput(w_dim=self.w_dim, channels=out_channels, size=resolution, sampling_rate=resolution, bandwidth=2)
             self.num_conv += 1
 
         if in_channels != 0:
-            self.conv0 = SynthesisLayer(in_channels, out_channels, w_dim=w_dim, resolution=resolution, up=2,
-                resample_filter=resample_filter, conv_clamp=conv_clamp, channels_last=self.channels_last, **layer_kwargs)
+            if use_style_gan3_layers:
+                self.conv0 = SynthesisLayerSTG3(
+                    w_dim=self.w_dim, is_torgb=False, is_critically_sampled=False, use_fp16=use_fp16,
+                    in_channels=in_channels, out_channels=out_channels,
+                    resolution=resolution, up=2,
+                    in_sampling_rate=int(sampling_rates[0]), out_sampling_rate=int(sampling_rates[0]),
+                    in_cutoff=cutoffs[0], out_cutoff=cutoffs[0],
+                    in_half_width=half_widths[0], out_half_width=half_widths[0],
+                    **layer_kwargs
+                )
+            else:
+                self.conv0 = SynthesisLayer(in_channels, out_channels, w_dim=w_dim, resolution=resolution, up=2,
+                    resample_filter=resample_filter, conv_clamp=conv_clamp, channels_last=self.channels_last, **layer_kwargs)
             self.num_conv += 1
 
         convs = []
+        l_idx = 1
         for _ in range(num_res_blocks):
-            convs.append(SynthesisLayer(out_channels, out_channels, w_dim=w_dim, resolution=resolution,
-                                        conv_clamp=conv_clamp, channels_last=self.channels_last, **layer_kwargs))
-            convs.append(SynthesisLayer(out_channels, out_channels, w_dim=w_dim, resolution=resolution,
-                                        conv_clamp=conv_clamp, channels_last=self.channels_last,
-                                        residual=True, **layer_kwargs))
+            if use_style_gan3_layers:
+                prev = max(l_idx - 1, 0)
+                convs.append(SynthesisLayerSTG3(
+                    w_dim=self.w_dim, is_torgb=False, is_critically_sampled=False, use_fp16=use_fp16,
+                    in_channels=in_channels, out_channels=out_channels,
+                    resolution=resolution, up=2,
+                    in_sampling_rate=int(sampling_rates[prev]), out_sampling_rate=int(sampling_rates[l_idx]),
+                    in_cutoff=cutoffs[prev], out_cutoff=cutoffs[l_idx],
+                    in_half_width=half_widths[prev], out_half_width=half_widths[l_idx], residual=False,
+                    **layer_kwargs))
+                l_idx += 1
+                prev = max(l_idx - 1, 0)
+                convs.append(SynthesisLayerSTG3(
+                    w_dim=self.w_dim, is_torgb=False, is_critically_sampled=False, use_fp16=use_fp16,
+                    in_channels=in_channels, out_channels=out_channels,
+                    resolution=resolution, up=2,
+                    in_sampling_rate=int(sampling_rates[prev]), out_sampling_rate=int(sampling_rates[l_idx]),
+                    in_cutoff=cutoffs[prev], out_cutoff=cutoffs[l_idx],
+                    in_half_width=half_widths[prev], out_half_width=half_widths[l_idx], residual=True
+                    **layer_kwargs))
+                l_idx += 1
+            else:
+                convs.append(SynthesisLayer(out_channels, out_channels, w_dim=w_dim, resolution=resolution,
+                                            conv_clamp=conv_clamp, channels_last=self.channels_last, **layer_kwargs))
+                convs.append(SynthesisLayer(out_channels, out_channels, w_dim=w_dim, resolution=resolution,
+                                            conv_clamp=conv_clamp, channels_last=self.channels_last,
+                                            residual=True, **layer_kwargs))
 
         self.convs1 = torch.nn.ModuleList(convs)
         self.num_conv += len(convs)
 
         if is_last or architecture == 'skip':
-            self.torgb = ToRGBLayer(out_channels, img_channels, w_dim=w_dim,
-                conv_clamp=conv_clamp, channels_last=self.channels_last)
+            if use_style_gan3_layers:
+                prev = max(l_idx - 1, 0)
+                self.torgb = SynthesisLayerSTG3(
+                    w_dim=self.w_dim, is_torgb=True, is_critically_sampled=False, use_fp16=use_fp16,
+                    in_channels=in_channels, out_channels=out_channels,
+                    resolution=resolution, up=2,
+                    in_sampling_rate=int(sampling_rates[prev]), out_sampling_rate=int(sampling_rates[l_idx]),
+                    in_cutoff=cutoffs[prev], out_cutoff=cutoffs[l_idx],
+                    in_half_width=half_widths[prev], out_half_width=half_widths[l_idx], residual=False
+                    ** layer_kwargs)
+                l_idx += 1
+            else:
+                self.torgb = ToRGBLayer(out_channels, img_channels, w_dim=w_dim,
+                    conv_clamp=conv_clamp, channels_last=self.channels_last)
             self.num_torgb += 1
 
     def forward(
@@ -466,7 +528,8 @@ class SynthesisNetwork(torch.nn.Module):
             out_channels = channels_dict[res]
             use_fp16 = (res >= fp16_resolution)
             is_last = (res == self.img_resolution)
-            block = SynthesisBlock(in_channels, out_channels, w_dim=w_dim, resolution=res, img_channels=img_channels, is_last=is_last, use_fp16=use_fp16, num_res_blocks=num_res_blocks, **block_kwargs)
+            block = SynthesisBlock(in_channels, out_channels, w_dim=w_dim, resolution=res, img_channels=img_channels,
+                                   is_last=is_last, use_fp16=use_fp16, num_res_blocks=num_res_blocks, **block_kwargs)
             self.num_ws += block.num_conv
             if is_last:
                 self.num_ws += block.num_torgb
