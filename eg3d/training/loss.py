@@ -109,7 +109,7 @@ class StyleGAN2Loss(Loss):
         return logits, video_logits
 
     def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, peep_vid_real, gain, cur_nimg):
-        img_logit_to_video_logit_ratio = np.array([1.0, 3.0], dtype=np.float32)
+        img_logit_to_video_logit_ratio = np.array([1.0, 30], dtype=np.float32)
         img_logit_to_video_logit_ratio /= np.linalg.norm(img_logit_to_video_logit_ratio)
         w_i_logit, w_v_logit = img_logit_to_video_logit_ratio
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
@@ -135,10 +135,10 @@ class StyleGAN2Loss(Loss):
         # real video resizing
         batch_s, c_ch, v_h, v_w, v_t = peep_vid_real.shape
         peep_vid_real = peep_vid_real.permute(0, 4, 1, 2, 3).resize(batch_s * v_t, c_ch, v_h, v_w)
-        peep_vid_real = filtered_resizing(peep_vid_real, size=neural_rendering_resolution//2, f=self.resample_filter,
+        peep_vid_real = filtered_resizing(peep_vid_real, size=neural_rendering_resolution, f=self.resample_filter,
                                           filter_mode='antialiased')
         peep_vid_real = peep_vid_real\
-            .resize(batch_s, v_t, c_ch, neural_rendering_resolution//2, neural_rendering_resolution//2)\
+            .resize(batch_s, v_t, c_ch, neural_rendering_resolution, neural_rendering_resolution)\
             .permute(0, 2, 3, 4, 1)
 
         if self.blur_raw_target:

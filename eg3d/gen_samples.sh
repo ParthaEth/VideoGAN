@@ -29,11 +29,21 @@ num_frames=160  # All others, then use sf ssfd2=5, in FVD computation
 #--outdir=$out_dir --network=$network --seeds $start_id-$end_id --img_type sr_image --trunc=0.7 --show_flow False
 
 
-echo "run_id = ucf"
-out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00002-ffhq--gpus8-batch128-gamma1/videos"
-network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00002-ffhq--gpus8-batch128-gamma1/network-snapshot-001556.pkl"
+#echo "run_id = ucf"
+#out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00002-ffhq--gpus8-batch128-gamma1/videos_trunk.7"
+#network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00002-ffhq--gpus8-batch128-gamma1/network-snapshot-002785.pkl"
+#cfg="ffhq"
+#
+#/home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
+#--outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=0.7 --show_flow=False \
+#--num_frames=$num_frames --reload_modules=False --cfg=$cfg --use_flow=True
+
+
+echo "run_id = ucf02"
+out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00003-ffhq--gpus8-batch128-gamma1/videos_trunk1.1"
+network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00003-ffhq--gpus8-batch128-gamma1/network-snapshot-001228.pkl"
 cfg="ffhq"
 
 /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
---outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=0.9 --show_flow=False \
+--outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=1.1 --show_flow=False \
 --num_frames=$num_frames --reload_modules=False --cfg=$cfg --use_flow=True

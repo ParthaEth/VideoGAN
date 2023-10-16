@@ -303,12 +303,14 @@ class AxisAligndProjectionRenderer(BaseRenderer):
 
         if self.use_flow:
             self.prepare_feature_volume(feature_grid, rendering_options, bypass_network=False)
+            cod_mult = 0.5
         else:
             self.planes = feature_grid
+            cod_mult = 0.9
 
         num_coordinates_per_axis = rendering_options['neural_rendering_resolution']
-        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
-        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * 0.5
+        axis_x = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * cod_mult
+        axis_y = torch.linspace(-1.0, 1.0, num_coordinates_per_axis, dtype=datatype, device=device) * cod_mult
         if self.return_video:  # Remove hack
             # import ipdb; ipdb.set_trace()
             assert(torch.all(-0.01 <= c[:, 3]) and torch.all(c[:, 3] <= 1.01))
@@ -360,7 +362,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             norm_peep_cod = c[:, 4:6] * 2 - 1
             assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
             video_coordinates = []
-            video_spatial_res = num_coordinates_per_axis // 2
+            video_spatial_res = num_coordinates_per_axis
             vide_time_res = 32   # TODO(Partha): pass this coordinate
             for b_id in range(batch_size):
                 cod_x = torch.linspace(norm_peep_cod[b_id, 0], norm_peep_cod[b_id, 0] + 2,
@@ -368,7 +370,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
                 cod_y = torch.linspace(norm_peep_cod[b_id, 1], norm_peep_cod[b_id, 1] + 2,
                                        video_spatial_res, dtype=datatype, device=device)
                 cod_z = torch.linspace(-1, 1, vide_time_res, dtype=datatype, device=device)
-                grid_x, grid_y, grid_z = torch.meshgrid(cod_x * 0.5, cod_y * 0.5, cod_z, indexing='ij')
+                grid_x, grid_y, grid_z = torch.meshgrid(cod_x * cod_mult, cod_y * cod_mult, cod_z, indexing='ij')
                 coordinates = torch.stack((grid_x, grid_y, grid_z), dim=0).permute(1, 2, 3, 0)
                 video_coordinates.append(coordinates)
 

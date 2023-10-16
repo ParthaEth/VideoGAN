@@ -212,7 +212,7 @@ class DualPeepDicriminator(torch.nn.Module):
         self.image_pair_discrim = DinoDiscriminator(c_dim=0,)
         video_color_channels = 256  # video frame chnannels
         video_resolution = img_resolution//8
-        self.vid_discrim = VideoDiscriminator(seq_length=time_steps, max_edge=32, channels=5, cmap_dim=c_dim)
+        self.vid_discrim = VideoDiscriminator(seq_length=time_steps, max_edge=64, channels=5, cmap_dim=c_dim)
         self.register_buffer('resample_filter', upfirdn2d.setup_filter([1, 3, 3, 1]))
 
     def get_grid_batch(self, cond_peep_vid, video_spatial_res):
