@@ -406,6 +406,7 @@ def main(**kwargs):
 
     # Resume.
     if opts.resume is not None:
+        c.G_kwargs.resume = True
         c.resume_pkl = opts.resume
         c.ada_kimg = 100 # Make ADA react faster at the beginning.
         c.ema_rampup = None # Disable EMA rampup.

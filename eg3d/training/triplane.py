@@ -38,6 +38,7 @@ class TriPlaneGenerator(torch.nn.Module):
         data_blur_sigma = None,
         apply_crop=False,
         use_flow = False,
+        resume=False,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -78,7 +79,7 @@ class TriPlaneGenerator(torch.nn.Module):
             OSGDecoder_imp_dim = self.tot_feature_dim
 
         self.backbone = StyleGANTBackbone(z_dim, c_dim=c_dim, w_dim=w_dim, img_resolution=blur_to_res[data_blur_sigma],
-                                          img_channels=self.tot_feature_dim,
+                                          img_channels=self.tot_feature_dim, resume=resume,
                                           conditional=False, path_stem=path_stem, **synthesis_kwargs)
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,

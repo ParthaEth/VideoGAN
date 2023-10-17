@@ -616,6 +616,7 @@ class WrapperStyleGANXLLike(torch.nn.Module):
         img_channels,               # Number of output color channels.
         conditional      = False,   # Arguments for MappingNetwork.
         path_stem        = None,
+        resume = False,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -623,7 +624,7 @@ class WrapperStyleGANXLLike(torch.nn.Module):
         self.c_dim = c_dim
         self.w_dim = w_dim
         train_mode = 'all'
-        if img_resolution > 64:
+        if img_resolution > 64 and not resume:
             train_mode = 'freeze64'
             assert path_stem is not None
         self.generator = Generator(z_dim, img_resolution=img_resolution,
