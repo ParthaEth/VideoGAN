@@ -17,8 +17,8 @@ class VideoFolderDataset(torch.utils.data.Dataset):
         load_n_consecutive_random_offset: bool=False,   # Should we use a random offset when loading consecutive frames?
         subsample_factor: int=1,                        # Sampling factor, i.e. decreasing the temporal resolution
         discard_short_videos: bool=False,               # Should we discard videos that are shorter than `load_n_consecutive`?
-        blur_sigma :float=0
-    ):
+        blur_sigma :float=0,
+        use_labels :bool=False):                        # will be silently ignored
         super().__init__()
         self.blur_sigma = blur_sigma
         print(f'Video dataset with blur: {blur_sigma}, subsample_factor:{subsample_factor}')

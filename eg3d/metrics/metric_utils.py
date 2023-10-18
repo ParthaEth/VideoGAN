@@ -21,6 +21,7 @@ import torch
 import dnnlib
 import inspect
 from urllib.parse import urlparse
+import math
 
 #----------------------------------------------------------------------------
 
@@ -216,7 +217,49 @@ class ProgressMonitor:
         )
 
 #----------------------------------------------------------------------------
+@torch.no_grad()
+def compute_video_feature_stats_for_generator(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=64,
+                                              max_items=None, feature_stats_cls=FeatureStats, **stats_kwargs):
+    assert max_items is not None
+    stats = feature_stats_cls(max_items=max_items, **stats_kwargs)
+    progress = opts.progress.sub(tag='Generator features', num_items=max_items, rel_lo=rel_lo, rel_hi=rel_hi)
+    detector = get_feature_detector(url=detector_url, device=opts.device, num_gpus=opts.num_gpus, rank=opts.rank,
+                                    verbose=progress.verbose)
+    # Setup generator and labels.
+    G = copy.deepcopy(opts.G).eval().requires_grad_(False).to(opts.device)
 
+    vid_batch = []
+    time_cod = torch.linspace(0, 1, opts.dataset_kwargs.load_n_consecutive)
+    batchs_of_imgs = int(math.ceil(opts.dataset_kwargs.load_n_consecutive / batch_size))
+    for i in range(max_items):
+        # generate one video
+        vid = []
+        for b_id in range(batchs_of_imgs):
+            frames_remaining = opts.dataset_kwargs.load_n_consecutive - b_id * batch_size
+            ac_b_size = min(batch_size, frames_remaining)
+            z = torch.randn([1, G.z_dim], device=opts.device).expand(ac_b_size, G.z_dim)
+            cond_params = torch.zeros((ac_b_size, G.c_dim), dtype=torch.float32, device=opts.device)
+            cond_params[:, 2] = 1
+            cond_params[:, 3] = time_cod[b_id * batch_size:b_id * batch_size + ac_b_size]
+            img = G(z, cond_params, **opts.G_kwargs)['image']  # shape = batch, 3, 256, 256 == batch, c, h, w
+            img = (img * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
+
+            vid.append(img)
+        vid_batch.append(torch.cat(vid, dim=0).permute(1, 0, 2, 3))  # vid must be of shape [c, t, h, w]
+        if i % batch_size == (batch_size - 1) or i % max_items == (max_items - 1):
+            # if opts.rank == 0:
+            #     print(stats.num_items)
+            # process current batch
+            vid_batch = torch.stack(vid_batch, dim=0)
+            features = detector(vid_batch.to(opts.device), **detector_kwargs)
+            stats.append_torch(features, num_gpus=opts.num_gpus, rank=opts.rank)
+            progress.update(stats.num_items)
+            vid_batch = []
+
+        if stats.is_full():
+            break
+
+    return stats
 
 @torch.no_grad()
 def compute_video_feature_stats_for_dataset(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=64,
@@ -276,7 +319,7 @@ def compute_video_feature_stats_for_dataset(opts, detector_url, detector_kwargs,
         images = batch['image']
         if temporal_detector:
             # import ipdb; ipdb.set_trace()
-            images = images.permute(0, 2, 1, 3, 4).contiguous() # [batch_size, c, t, h, w]
+            images = images.permute(0, 2, 1, 3, 4).contiguous()  # [batch_size, c, t, h, w]
 
             # images = images.float() / 255
             # images = torch.nn.functional.interpolate(images, size=(images.shape[2], 128, 128), mode='trilinear', align_corners=False) # downsample
@@ -365,7 +408,7 @@ def compute_feature_stats_for_dataset(opts, detector_url, detector_kwargs, rel_l
 #----------------------------------------------------------------------------
 
 
-def compute_feature_stats_for_generator(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=256,
+def compute_feature_stats_for_generator(opts, detector_url, detector_kwargs, rel_lo=0, rel_hi=1, batch_size=64,
                                         batch_gen=None, **stats_kwargs):
     if batch_gen is None:
         batch_gen = min(batch_size, 4)
@@ -379,7 +422,8 @@ def compute_feature_stats_for_generator(opts, detector_url, detector_kwargs, rel
     stats = FeatureStats(**stats_kwargs)
     assert stats.max_items is not None
     progress = opts.progress.sub(tag='generator features', num_items=stats.max_items, rel_lo=rel_lo, rel_hi=rel_hi)
-    detector = get_feature_detector(url=detector_url, device=opts.device, num_gpus=opts.num_gpus, rank=opts.rank, verbose=progress.verbose)
+    detector = get_feature_detector(url=detector_url, device=opts.device, num_gpus=opts.num_gpus, rank=opts.rank,
+                                    verbose=progress.verbose)
 
     # Main loop.
     while not stats.is_full():

@@ -26,22 +26,27 @@ def compute_fvd(opts, max_real: int, num_gen: int, num_frames: int, subsample_fa
     opts.dataset_kwargs.load_n_consecutive = num_frames
     opts.dataset_kwargs.subsample_factor = subsample_factor
     # batch_size = NUM_FRAMES_IN_BATCH[opts.dataset_kwargs.resolution] // num_frames
-    batch_size = 128 // num_frames
+    batch_size = 256 // num_frames
 
     mu_real, sigma_real = metric_utils.compute_video_feature_stats_for_dataset(
         opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs, rel_lo=0, rel_hi=0,
         capture_mean_cov=True, max_items=max_real, temporal_detector=True, batch_size=batch_size).get_mean_cov()
 
-    opts.generated_dir.dataset_kwargs.load_n_consecutive = num_frames
-    # opts.generated_dir.dataset_kwargs.subsample_factor = subsample_factor
-    if subsample_factor != 1 and opts.generated_dir.dataset_kwargs.subsample_factor != subsample_factor:
-        print('Warning: Different subsample factors are provided. This could be an error double check! '
-              f'Dataset subsample factor {subsample_factor}, Dataset 2 subsample_factor:'
-              f' {opts.generated_dir.dataset_kwargs.subsample_factor}')
-    opts.generated_dir.cache = False
-    mu_gen, sigma_gen = metric_utils.compute_video_feature_stats_for_dataset(
-        opts=opts.generated_dir, detector_url=detector_url, detector_kwargs=detector_kwargs, rel_lo=0, rel_hi=0,
-        capture_mean_cov=True, max_items=num_gen, temporal_detector=True, batch_size=batch_size).get_mean_cov()
+    if opts.G is None:
+        opts.generated_dir.dataset_kwargs.load_n_consecutive = num_frames
+        # opts.generated_dir.dataset_kwargs.subsample_factor = subsample_factor
+        if subsample_factor != 1 and opts.generated_dir.dataset_kwargs.subsample_factor != subsample_factor:
+            print('Warning: Different subsample factors are provided. This could be an error double check! '
+                  f'Dataset subsample factor {subsample_factor}, Dataset 2 subsample_factor:'
+                  f' {opts.generated_dir.dataset_kwargs.subsample_factor}')
+        opts.generated_dir.cache = False
+        mu_gen, sigma_gen = metric_utils.compute_video_feature_stats_for_dataset(
+            opts=opts.generated_dir, detector_url=detector_url, detector_kwargs=detector_kwargs, rel_lo=0, rel_hi=0,
+            capture_mean_cov=True, max_items=num_gen, temporal_detector=True, batch_size=batch_size).get_mean_cov()
+    else:
+        mu_gen, sigma_gen = metric_utils.compute_video_feature_stats_for_generator(
+            opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs, rel_lo=0, rel_hi=0,
+            capture_mean_cov=True, max_items=max_real, batch_size=batch_size).get_mean_cov()
 
     if opts.rank != 0:
         return float('nan')
