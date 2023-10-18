@@ -8,10 +8,10 @@ fi
 run_id="$1"
 sleep "$((run_id / 10))"
 
-offset=0
+offset=3
 run_id=$((run_id + offset))
 # Specify the directory containing the .pkl files
-directory="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00005-ffhq--gpus8-batch128-gamma1/"
+directory="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00004-ffhq--gpus8-batch128-gamma1/"
 
 # Check if the directory exists
 if [ ! -d "$directory" ]; then

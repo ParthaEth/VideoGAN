@@ -26,7 +26,7 @@ def compute_fvd(opts, max_real: int, num_gen: int, num_frames: int, subsample_fa
     opts.dataset_kwargs.load_n_consecutive = num_frames
     opts.dataset_kwargs.subsample_factor = subsample_factor
     # batch_size = NUM_FRAMES_IN_BATCH[opts.dataset_kwargs.resolution] // num_frames
-    batch_size = 256 // num_frames
+    batch_size = 512 // num_frames
 
     mu_real, sigma_real = metric_utils.compute_video_feature_stats_for_dataset(
         opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs, rel_lo=0, rel_hi=0,
