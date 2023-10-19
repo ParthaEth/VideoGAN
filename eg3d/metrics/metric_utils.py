@@ -229,7 +229,7 @@ def compute_video_feature_stats_for_generator(opts, detector_url, detector_kwarg
     G = copy.deepcopy(opts.G).eval().requires_grad_(False).to(opts.device)
 
     vid_batch = []
-    time_cod = torch.linspace(0, 1, opts.dataset_kwargs.load_n_consecutive)
+    time_cod = torch.linspace(0, 1, 160)  # this depends upon the FPS at which the generator is trained!
     batchs_of_imgs = int(math.ceil(opts.dataset_kwargs.load_n_consecutive / batch_size))
     for i in range(max_items):
         # generate one video
