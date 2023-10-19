@@ -78,6 +78,9 @@ if __name__ == '__main__':
     argParser.add_argument("-vr", "--video_root", type=str, required=True, help="Dataset root_dir")
     argParser.add_argument("-nfm", "--num_missing_frames", type=int, required=True, help="Num frames to interpolate")
     argParser.add_argument("-fgt", "--feature_grid_type", type=str, required=True, help="Feature grid type")
+    argParser.add_argument("-eipl", "--intr_or_extrapolation", type=str, required=True,
+                           help="Whether to inter or extrapolate possible (interpolate/extrapolate)")
+
     args = argParser.parse_args()
 
     axis_dict = {'x': [1, 0, 0], 'y': [0, 1, 0], 't': [0, 0, 1]}
@@ -106,7 +109,7 @@ if __name__ == '__main__':
     load_saved = False
     ssim = StructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)).to(device)
     out_dir = f'/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/' \
-              f'{args.feature_grid_type}/{args.num_missing_frames} frames'
+              f'{args.intr_or_extrapolation}/{args.feature_grid_type}/{args.num_missing_frames} frames'
     os.makedirs(out_dir, exist_ok=True)
     # video_root = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/'
     args.video_root = args.video_root.rstrip('/')
@@ -117,8 +120,20 @@ if __name__ == '__main__':
     vid_vol = read_video_vol(video_path)  # c, h, w, t
     num_missing_frames = args.num_missing_frames
     total_frames = vid_vol.shape[-1]
-    frame_start = np.random.randint(0, total_frames - num_missing_frames, 1)[0]
-    missing_frame_ids = np.arange(frame_start, frame_start + num_missing_frames)
+    if args.intr_or_extrapolation.lower() == 'interpolate':
+        frame_start = np.random.randint(0, total_frames - num_missing_frames, 1)[0]
+        missing_frame_ids = np.arange(frame_start, frame_start + num_missing_frames)
+    elif args.intr_or_extrapolation.lower() == 'extrapolate':
+        if np.random.randint(0, 2) == 0:
+            # drop first n frames
+            missing_frame_ids = np.arange(0, num_missing_frames)
+        else:
+            #drop last n frames
+            missing_frame_ids = np.arange(total_frames-num_missing_frames, total_frames)
+
+    else:
+        raise ValueError(f'Unrecognized frame infilling type {args.intr_or_extrapolation}')
+
     print(f'inpenting frame: {missing_frame_ids}')
     missing_frame = copy.deepcopy(vid_vol[:, :, :, missing_frame_ids])
     missing_frame = torch.from_numpy(missing_frame).to(device).permute(3, 0, 1, 2)
@@ -133,13 +148,24 @@ if __name__ == '__main__':
     if feature_grid_type.lower() == 'triplane':
         feature_grid = torch.clip((1 / 30) * torch.randn(1, 1, plane_c, plane_h, plane_w,
                                                          dtype=torch.float32), min=-3, max=3).to(device)
+        use_flow = True
+        OSGDecoder_inp_features = appearance_feat
+    elif feature_grid_type.lower() == 'triplane_no_flow':
+        feature_grid = torch.clip((1 / 30) * torch.randn(1, 3, plane_c//3, plane_h, plane_w,
+                                                         dtype=torch.float32), min=-3, max=3).to(device)
+        use_flow = False
+        OSGDecoder_inp_features = (plane_c//3) * 3
     elif feature_grid_type.lower() == '3d_voxels':
         vol_h = vol_w = vol_d = int(np.power(plane_h * plane_w, 1/3))
         feature_grid = torch.clip((1 / 30) * torch.randn(1, plane_c, vol_h, vol_w, vol_d,
                                                          dtype=torch.float32), min=-3, max=3).to(device)
+        use_flow = True
+        OSGDecoder_inp_features = appearance_feat
     elif feature_grid_type.lower() == 'positional_embedding':
         std_pos_encoder = PositionalEncodingPermute3D(plane_c).to(device)
         feature_grid = std_pos_encoder(torch.zeros((1, plane_c, plane_h, plane_w, rendering_res), device=device))
+        use_flow = True
+        OSGDecoder_inp_features = appearance_feat
     else:
         raise NotImplementedError(f'feature grid type: {feature_grid_type} not recognized')
 
@@ -152,7 +178,8 @@ if __name__ == '__main__':
 
     if network_pkl is None:
         renderer = AxisAligndProjectionRenderer(return_video=True, motion_features=motion_features,
-                                                appearance_features=appearance_feat).to(device)
+                                                appearance_features=appearance_feat,
+                                                use_flow=use_flow).to(device)
     else:
         renderer = G.renderer
     rend_params = [param for param in renderer.parameters()]
@@ -161,7 +188,7 @@ if __name__ == '__main__':
         for param in renderer.parameters():
             param.requires_grad = False
 
-    decoder = OSGDecoder(appearance_feat, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
+    decoder = OSGDecoder(OSGDecoder_inp_features, {'decoder_lr_mul': 1, 'decoder_output_dim': 32}).to(device)
     dec_params = [param for param in decoder.parameters()]
     if load_saved:
         decoder.load_state_dict(pre_trained['decoder'])
@@ -227,8 +254,10 @@ if __name__ == '__main__':
         # import ipdb; ipdb.set_trace()
         colors_coarse, _, features, _ = \
             renderer(feature_grid, decoder, cond, None, {'density_noise': 0, 'box_warp': 0.999,
-                                                   'neural_rendering_resolution': rendering_res,
-                                                   'feature_grid_type': feature_grid_type})
+                                                         'neural_rendering_resolution': rendering_res,
+                                                         'feature_grid_type': feature_grid_type,
+                                                         'global_flow_div': 16,
+                                                         'local_flow_div': 64},)
 
         # Reshape into 'raw' image
         rgb_img = colors_coarse.permute(0, 2, 1).reshape(b_size + num_missing_frames,
@@ -286,8 +315,10 @@ if __name__ == '__main__':
             cond = torch.tensor([[0, 0, 1, 0.1], [0, 0, 1, 0.9], [1, 0, 0, 0.5]], dtype=torch.float32, device=device)
             rgb_img_test, _, _, _ = renderer(feature_grid[:len(cond)], decoder, cond, None,
                                              {'density_noise': 0, 'box_warp': 0.999,
-                                         'neural_rendering_resolution': rendering_res,
-                                         'feature_grid_type': feature_grid_type})
+                                              'neural_rendering_resolution': rendering_res,
+                                              'feature_grid_type': feature_grid_type,
+                                              'global_flow_div': 16,
+                                              'local_flow_div': 64},)
             feature_image = rgb_img_test.permute(0, 2, 1).reshape(cond.shape[0], rgb_img_test.shape[-1], rendering_res,
                                                                   rendering_res)
             rgb_image_to_save = torch.cat((feature_image[:, :3], scale_down(gt_img[:3]),

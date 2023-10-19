@@ -27,4 +27,4 @@ periodic_release = ( (JobStatus =?= 5) && (HoldReasonCode =?= 3) && (HoldReasonS
 # Uncomment this line if you want the jobs automatically removed from the queue
 # periodic_remove = ( (JobStatus =?= 5) && (HoldReasonCode =?= 3) && (HoldReasonSubCode =?= 2) )
 
-queue 20
+queue 40
