@@ -151,7 +151,7 @@ class StyleGAN2Loss(Loss):
 
         # Gmain: Maximize logits for generated images.
         if phase in ['Gmain', 'Gboth']:
-            if hasattr(self.G.backbone.generator, 'head_layer_names'):  # blocking grad computation for double safety!
+            if hasattr(getattr(self.G.backbone, 'generator', None), 'head_layer_names'):  # blocking grad computation for double safety!
                 self.G.backbone.mapping.requires_grad_(False)
                 for name in self.G.backbone.synthesis.layer_names:
                     getattr(self.G.backbone.synthesis, name).requires_grad_(
@@ -172,7 +172,7 @@ class StyleGAN2Loss(Loss):
                 loss_Gmain.mean().mul(gain).backward()
 
             # import ipdb;ipdb.set_trace()
-            if hasattr(self.G.backbone.generator, 'head_layer_names'): # StyleGANXL
+            if hasattr(getattr(self.G.backbone, 'generator', None), 'head_layer_names'): # StyleGANXL
                 g_fixed_norm_rec = False
                 for name in self.G.backbone.synthesis.layer_names:
                     if name not in self.G.backbone.generator.head_layer_names and not g_fixed_norm_rec:  # not in head layer => fixed params
@@ -184,7 +184,7 @@ class StyleGAN2Loss(Loss):
                         training_stats.report(f'G/params/trainable_layer/{name}', next(g_var_param).norm(2))
                         if g_fixed_norm_rec:
                             break
-            elif hasattr(self.G.backbone.generator, 'train_mode'):  # StyleGAN-T
+            elif hasattr(getattr(self.G.backbone, 'generator', None), 'train_mode'):  # StyleGAN-T
                 g_fixed_norm_rec = False
                 g_trainable_norm_rec = False
                 for param_name, params in self.G.backbone.generator.named_parameters():

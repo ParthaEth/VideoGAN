@@ -289,14 +289,14 @@ def training_loop(
             opt_kwargs.lr = opt_kwargs.lr * mb_ratio
             opt_kwargs.betas = [beta ** mb_ratio for beta in opt_kwargs.betas]
             if name == 'G':
-                if hasattr(module.backbone.generator, 'head_layer_names'):
+                if hasattr(getattr(module.backbone, 'generator', None), 'head_layer_names'):
                     # training additional layer on top of stem. Freeze stem weights
                     backbone_params = []
                     for g_layer_name in module.backbone.synthesis.layer_names:
                         if g_layer_name in module.backbone.generator.head_layer_names:
                             backbone_params += [params for params in
                                                 getattr(module.backbone.synthesis, g_layer_name).parameters()]
-                elif hasattr(module.backbone.generator, 'train_mode'):
+                elif hasattr(getattr(module.backbone, 'generator', None), 'train_mode'):
                     if module.backbone.generator.train_mode == 'freeze64':
                         backbone_params = []
                         for param_name, params in module.backbone.generator.named_parameters():

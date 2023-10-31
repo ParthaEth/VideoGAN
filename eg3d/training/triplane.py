@@ -12,11 +12,7 @@ import torch
 import torchvision.transforms
 
 from torch_utils import persistence
-from training.networks_stylegan2 import Generator as StyleGAN2Backbone
-# from training.networks_stylegan_xl import UnifiedGenerator as StyleGANXLBackbone
-from training.stylegan_t.generator import WrapperStyleGANXLLike as StyleGANTBackbone
 from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
-# from training.volumetric_rendering.ray_sampler import RaySampler
 import dnnlib
 
 @persistence.persistent_class
@@ -60,17 +56,40 @@ class TriPlaneGenerator(torch.nn.Module):
         # self.renderer = ImportanceRenderer(self.neural_rendering_resolution, return_video)
         # self.ray_sampler = RaySampler()
         self.neural_rendering_resolution = 64
-        # self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=256,
-        #                                   img_channels=self.appearance_features + self.motion_features,
-        #                                   mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
         if not isinstance(data_blur_sigma, str):
             data_blur_sigma = f'{data_blur_sigma:.2f}'
         # blur_to_res = {'10.00': 16, '5.00': 32, '2.50': 64, '1.25': 128, '0.00': 256}
         blur_to_res = {'10.00': 16, '5.00': 16, '2.50': 32, '1.25': 64, '0.00': 128}
-        # self.backbone = StyleGANXLBackbone(z_dim, c_dim, w_dim, img_resolution=blur_to_res[data_blur_sigma],
-        #                                    img_channels=self.appearance_features + self.motion_features,
-        #                                    mapping_kwargs=mapping_kwargs, path_stem=path_stem, head_layers=head_layers,
-        #                                    up_factor=up_factor, **synthesis_kwargs)
+
+        print(f'Using {synthesis_kwargs["backbone"]}')
+        if synthesis_kwargs['backbone'] == 'StyleGAN2':
+            from training.networks_stylegan2 import Generator as StyleGAN2Backbone
+            del synthesis_kwargs['backbone']
+            self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=128,
+                                              img_channels=self.appearance_features + self.motion_features,
+                                              mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
+
+        elif synthesis_kwargs['backbone'] == 'StyleGANXL':
+            from training.networks_stylegan_xl import UnifiedGenerator as StyleGANXLBackbone
+            del synthesis_kwargs['backbone']
+            self.backbone = StyleGANXLBackbone(z_dim, c_dim, w_dim, img_resolution=blur_to_res[data_blur_sigma],
+                                               img_channels=self.appearance_features + self.motion_features,
+                                               mapping_kwargs=mapping_kwargs, path_stem=path_stem, head_layers=head_layers,
+                                               up_factor=up_factor, **synthesis_kwargs)
+        elif synthesis_kwargs['backbone'] == 'StyleGANT':
+            from training.stylegan_t.generator import WrapperStyleGANXLLike as StyleGANTBackbone
+            del synthesis_kwargs['backbone']
+            self.backbone = StyleGANTBackbone(z_dim, c_dim=c_dim, w_dim=w_dim, img_resolution=blur_to_res[data_blur_sigma],
+                                              img_channels=self.tot_feature_dim, resume=resume,
+                                              conditional=False, path_stem=path_stem, **synthesis_kwargs)
+        else:
+            raise ValueError(f'Unknown backend: {synthesis_kwargs["backbone"]}')
+
+
+        self.superresolution = dnnlib.util.construct_class_by_name(
+            class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
+            sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
+
         if use_flow:
             self.tot_feature_dim = self.appearance_features + self.motion_features
             OSGDecoder_imp_dim = self.appearance_features
@@ -78,12 +97,6 @@ class TriPlaneGenerator(torch.nn.Module):
             self.tot_feature_dim = self.appearance_features * self.num_planes
             OSGDecoder_imp_dim = self.tot_feature_dim
 
-        self.backbone = StyleGANTBackbone(z_dim, c_dim=c_dim, w_dim=w_dim, img_resolution=blur_to_res[data_blur_sigma],
-                                          img_channels=self.tot_feature_dim, resume=resume,
-                                          conditional=False, path_stem=path_stem, **synthesis_kwargs)
-        self.superresolution = dnnlib.util.construct_class_by_name(
-            class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
-            sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
         self.decoder = OSGDecoder(OSGDecoder_imp_dim,
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
                                    'decoder_output_dim': 32})
