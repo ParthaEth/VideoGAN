@@ -218,7 +218,7 @@ def parse_comma_separated_list(s):
 @click.option('--time_steps', help='How many frames to work with', metavar='BOOL', type=int, default=32, show_default=True)
 @click.option('--superres',     help='Train superresolution stage. You have to provide the path to a pretrained stem.', is_flag=True)
 @click.option('--path_stem',    help='Path to pretrained stem',  type=str, default=None)
-@click.option('--backbone',    help='Which backbone feature generator to use. possbel:[StyleGAN2, StyleGANXL, StyleGANT]',  type=str, default=None)
+@click.option('--backbone',    help='Which backbone feature generator to use. possbel:[StyleGAN2, StyleGANXL, StyleGANT]', type=str, required=True)
 @click.option('--head_layers',  help='Layers of added superresolution head.', type=click.IntRange(min=1), default=None, show_default=True)
 @click.option('--up_factor',  help='Up the latent code resolution by this factor from stem', type=click.IntRange(min=2), default=None, show_default=True)
 @click.option('--blur_sigma',   help='Blur the true data so we can train a low latent res model first', metavar='INT', type=click.FloatRange(min=0), required=True)
