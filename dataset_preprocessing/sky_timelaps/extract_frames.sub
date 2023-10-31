@@ -11,7 +11,7 @@ getenv = True
 # concurrency_limits=user.biggpus:400
 
 # Maximum expected execution time for the job, in seconds
-MaxTime = 4*3600
+MaxTime = 400*3600
 # Number of retries before giving up
 NumRetries = 0
 
@@ -24,4 +24,4 @@ periodic_release = ( (JobStatus =?= 5) && (HoldReasonCode =?= 3) && (HoldReasonS
 # Uncomment this line if you want the jobs automatically removed from the queue
 # periodic_remove = ( (JobStatus =?= 5) && (HoldReasonCode =?= 3) && (HoldReasonSubCode =?= 2) )
 
-queue 100
+queue 250

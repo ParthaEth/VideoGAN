@@ -32,8 +32,17 @@ for trunc in "${trunc_coeffs[@]}"; do
 
 
   echo "run_id = ucf"
-  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00005-ffhq--gpus8-batch128-gamma1/videos_trunk_$trunc"
-  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00005-ffhq--gpus8-batch128-gamma1/network-snapshot-000901.pkl"
+  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00012-ffhq-clips-gpus4-batch128-gamma1/1392/videos_trunk_$trunc"
+  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00012-ffhq-clips-gpus4-batch128-gamma1/network-snapshot-001392.pkl"
+  cfg="ffhq"
+
+  /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
+  --outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=$trunc --show_flow=False \
+  --num_frames=$num_frames --reload_modules=False --cfg=$cfg --use_flow=True
+
+  echo "run_id = ucf"
+  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00012-ffhq-clips-gpus4-batch128-gamma1/1556/videos_trunk_$trunc"
+  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00012-ffhq-clips-gpus4-batch128-gamma1/network-snapshot-001556.pkl"
   cfg="ffhq"
 
   /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \

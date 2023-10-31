@@ -1,5 +1,20 @@
 #!/bin/bash
 
+check_extracted_files() {
+    local output_directory="$1"
+
+    if [ ! -d "$output_directory" ]; then
+        echo "Error: Output directory '$output_directory' does not exist."
+        return
+    fi
+
+    for file in "$output_directory"/*.jpg; do
+        if [ -f "$file" ] && [ ! -r "$file" ]; then
+            echo "Error: File $file is not readable."
+        fi
+    done
+}
+
 # Check if an argument is provided for run_id
 if [ $# -eq 0 ]; then
     echo "Please provide a value for run_id."
@@ -13,11 +28,18 @@ run_id="$1"
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/sky_timelapse"
 
-vid_src_dir="/is/cluster/fast/pghosh/datasets/sky_timelapse/train_clips"
-dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/sky_timelapse_32frames"
+#vid_src_dir="/is/cluster/fast/pghosh/datasets/sky_timelapse/train_clips"
+#dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/sky_timelapse_32frames"
 
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all"
-#dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/fasion_video_bdmm_all"
+#dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/fashion_video_bdmm_all"
+
+vid_src_dir="/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_celebv_hq/"
+dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ffhq_X_celebv_hq_all_new/"
+
+if [ ! -d "$dest_root" ]; then
+    mkdir "$dest_root"
+fi
 
 # Ensure the root directory exists
 if [ ! -d "$vid_src_dir" ]; then
@@ -50,7 +72,10 @@ for ((i = start_index; i < end_index && i < ${#sorted_files[@]}; i++)); do
 
         # Use ffmpeg to extract frames into the corresponding directory
         ffmpeg -i "$video_file" -q:v 3 "$output_directory/frame%04d.jpg"
+        chmod +w "$output_directory"/*.jpg
+        check_extracted_files "$output_directory"
 
+        # select every 5th frame
 #        ffmpeg -i "$video_file" -q:v 3 -vf "select='not(mod(n\,5))'" -vframes 32 "$output_directory/frame%04d.jpg"
 
 

@@ -15,7 +15,7 @@ def print_nested_dict(d, indent=0):
 def print_latex_lines(result_dict):
     for method in result_dict:  # one line each
         lat_line = f'{method} & '
-        for dataset in ['ffhq', 'fasion', 'train']:
+        for dataset in ['FFHQ_ALL', 'FASHION', 'UCF']:  # ffhq, fashion, skytimelapse, ucf
             for inp_frame_num in ['3 frames', '8 frames']:
                 for metric in ['accum_ssim', 'accum_psnr']:
                     lat_line += f'{result_dict[method][inp_frame_num][dataset][metric]:.2f} &'
@@ -23,8 +23,24 @@ def print_latex_lines(result_dict):
         print(f'{lat_line} \\\\')
 
 
-root_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
+# root_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/interpolate'
+root_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/extrapolate'
 result_dict = {}
+data_set_2_file_name_start = {'UCF': ['clips_test', 'clips_train'],
+                              'FASHION': ['fasion_video', ],
+                              'FFHQ_10M': ['ffhq_X_10_good_motions', ],
+                              'FFHQ_ALL': ['ffhq_X_celebv_hq', ],
+                              'SKY_TIMELAPSE': ['train_clips', ]}
+
+
+def get_dataset_name(file_name):
+    for dataset, prefixes in data_set_2_file_name_start.items():
+        for prefix in prefixes:
+            if file_name.startswith(prefix):
+                return dataset
+    return None  # Return None if no matching dataset is found
+
+
 for method in os.listdir(root_dir):
     # print(f'{method}')
     dataset_dict = {}
@@ -35,7 +51,7 @@ for method in os.listdir(root_dir):
         for npy_file in os.listdir(os.path.join(root_dir, method, frame_count)):
             name_curr_file = os.path.join(root_dir, method, frame_count, npy_file)
             if npy_file.endswith('.npz'):
-                data_set_name = npy_file.split('_')[0]
+                data_set_name = get_dataset_name(npy_file)
                 if stats_dict.get(data_set_name, None) is None:
                     stats_dict[data_set_name] = copy.deepcopy(accum_dict)
                 dat_tis_file = np.load(name_curr_file)
