@@ -20,6 +20,7 @@ import numpy as np
 import torch
 import copy
 import imageio
+from thop import profile
 
 
 import legacy
@@ -193,6 +194,7 @@ def generate_images(
 
     # Generate batch of images.
     b_size = 4
+    flops = None
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=30, codec='libx264')
@@ -222,6 +224,9 @@ def generate_images(
 
             # import ipdb; ipdb.set_trace()
 
+            if flops is None:
+                flops, _ = profile(G, inputs=(z, conditioning_params))
+                print(f'Model giga Flops = {flops/1e9} for {num_frames} frames at resolution, {G.img_resolution}')
             ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
             g_out = G.synthesis(ws, conditioning_params, noise_mode='const')
             # import ipdb; ipdb.set_trace()

@@ -74,8 +74,8 @@ class TriPlaneGenerator(torch.nn.Module):
             del synthesis_kwargs['backbone']
             self.backbone = StyleGANXLBackbone(z_dim, c_dim, w_dim, img_resolution=blur_to_res[data_blur_sigma],
                                                img_channels=self.appearance_features + self.motion_features,
-                                               mapping_kwargs=mapping_kwargs, path_stem=path_stem, head_layers=head_layers,
-                                               up_factor=up_factor, **synthesis_kwargs)
+                                               mapping_kwargs=mapping_kwargs, path_stem=path_stem,
+                                               head_layers=head_layers, up_factor=up_factor, **synthesis_kwargs)
         elif synthesis_kwargs['backbone'] == 'StyleGANT':
             from training.stylegan_t.generator import WrapperStyleGANXLLike as StyleGANTBackbone
             del synthesis_kwargs['backbone']
