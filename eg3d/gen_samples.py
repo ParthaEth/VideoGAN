@@ -20,7 +20,8 @@ import numpy as np
 import torch
 import copy
 import imageio
-from thop import profile
+from fvcore.nn import FlopCountAnalysis
+
 
 
 import legacy
@@ -195,82 +196,84 @@ def generate_images(
     # Generate batch of images.
     b_size = 4
     flops = None
-    for seed_idx, seed in enumerate(seeds):
-        print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
-        video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=30, codec='libx264')
-        z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim,).astype(np.float32)).to(device).repeat(b_size, 1)
-        time_cod = torch.linspace(0, 1, num_frames)
+    with torch.no_grad():
+        for seed_idx, seed in enumerate(seeds):
+            print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
+            video_out = imageio.get_writer(f'{outdir}/seed{seed:04d}.mp4', mode='I', fps=30, codec='libx264')
+            z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim,).astype(np.float32)).to(device).repeat(b_size, 1)
+            time_cod = torch.linspace(0, 1, num_frames)
 
-        batches = num_frames // b_size
-        # x0 = np.random.randint(0, 256 - 40)/256
-        # y0 = np.random.randint(0, 256 - 40)/256
-        # vel_p_frame = [0, 0]
-        sup_res_factor = G.img_resolution / G.neural_rendering_resolution
-        for b_id in range(batches):
+            batches = num_frames // b_size
+            # x0 = np.random.randint(0, 256 - 40)/256
+            # y0 = np.random.randint(0, 256 - 40)/256
+            # vel_p_frame = [0, 0]
+            sup_res_factor = G.img_resolution / G.neural_rendering_resolution
+            for b_id in range(batches):
 
-            conditioning_params = torch.zeros((b_size, G.c_dim), dtype=z.dtype, device=device)
-            if axis == 'x':
-                conditioning_params[:, 0] = 1
-            elif axis == 'y':
-                conditioning_params[:, 1] = 1
-            elif axis == 't':
-                conditioning_params[:, 2] = 1
-            else:
-                raise ValueError(f'Undefined axis: {axis}. Valid options are x, y, or t')
-
-            conditioning_params[:, 3] = time_cod[b_id*b_size:b_id*b_size + b_size]
-            # conditioning_params[:, 4:] = \
-            #     torch.tensor([x0, y0, vel_p_frame[0], vel_p_frame[1]], dtype=torch.float32)[None, ...]
-
-            # import ipdb; ipdb.set_trace()
-
-            if flops is None:
-                flops, _ = profile(G, inputs=(z, conditioning_params))
-                print(f'Model giga Flops = {flops/1e9} for {num_frames} frames at resolution, {G.img_resolution}')
-            ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
-            g_out = G.synthesis(ws, conditioning_params, noise_mode='const')
-            # import ipdb; ipdb.set_trace()
-            img_batch = g_out[img_type]
-            if b_id == 0:
-                local_warped = img_batch
-
-            img_batch = (img_batch * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
-            if show_flow:
-                flows_and_masks = g_out['flows_and_masks'].reshape(b_size, 5, G.neural_rendering_resolution,
-                                                                   G.neural_rendering_resolution)
-                flows_and_masks = torch.nn.functional.interpolate(flows_and_masks, img_batch.shape[-1])
-                # import ipdb; ipdb.set_trace()
-                local_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 0:2]).flip([1,]))
-                global_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 2:4]).flip([1,]))
-                mask = (flows_and_masks[:, 4:5] * 127.5 + 127.5).expand(-1, 3, -1, -1).to(torch.uint8)
-                # import ipdb; ipdb.set_trace()
-
-                high_res_flow = (identity_grid[None] -
-                                 (identity_grid[None] - flows_and_masks[:, 0:2])/sup_res_factor).permute(0, 2, 3, 1) * 2
-            for i in range(b_size):
-                # import ipdb; ipdb.set_trace()
-                # peep_frame = g_out['peep_vid'][0:1, :, :, :, b_id*b_size + i]
-                # peep_frame = torch.nn.functional.interpolate(peep_frame, img_batch.shape[-1])
-                # peep_frame = (peep_frame * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
-
-                local_warped_clmp = (local_warped * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
-                # mask 0 implies only local flow used
-                # video_frame = make_grid([local_warped_clmp[0], peep_frame[0], img_batch[i], local_flow[i],
-                #                          global_flow[i], mask[i]], 6, pad_value=255)
-                if show_flow:
-                    video_frame = make_grid([local_warped_clmp[0], img_batch[i], local_flow[i],
-                                             global_flow[i], mask[i]], 5, pad_value=255)
+                conditioning_params = torch.zeros((b_size, G.c_dim), dtype=z.dtype, device=device)
+                if axis == 'x':
+                    conditioning_params[:, 0] = 1
+                elif axis == 'y':
+                    conditioning_params[:, 1] = 1
+                elif axis == 't':
+                    conditioning_params[:, 2] = 1
                 else:
-                    video_frame = img_batch[i]
+                    raise ValueError(f'Undefined axis: {axis}. Valid options are x, y, or t')
 
-                video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
+                conditioning_params[:, 3] = time_cod[b_id*b_size:b_id*b_size + b_size]
+                # conditioning_params[:, 4:] = \
+                #     torch.tensor([x0, y0, vel_p_frame[0], vel_p_frame[1]], dtype=torch.float32)[None, ...]
+
+                # import ipdb; ipdb.set_trace()
+
+                if flops is None:
+                    # flops, params = profile(G, inputs=(z, conditioning_params))
+                    flops = FlopCountAnalysis(G, (z, conditioning_params))
+                    print(f"Total tera-FLOPs: {flops.total()/1e12}")
+                ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
+                g_out = G.synthesis(ws, conditioning_params, noise_mode='const')
+                # import ipdb; ipdb.set_trace()
+                img_batch = g_out[img_type]
+                if b_id == 0:
+                    local_warped = img_batch
+
+                img_batch = (img_batch * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
                 if show_flow:
-                    local_warped = torch.nn.functional.grid_sample(
-                        local_warped[0:1],  # .permute(0, 1, 3, 2),
-                        high_res_flow[i:i + 1],
-                        align_corners=True, )
+                    flows_and_masks = g_out['flows_and_masks'].reshape(b_size, 5, G.neural_rendering_resolution,
+                                                                       G.neural_rendering_resolution)
+                    flows_and_masks = torch.nn.functional.interpolate(flows_and_masks, img_batch.shape[-1])
+                    # import ipdb; ipdb.set_trace()
+                    local_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 0:2]).flip([1,]))
+                    global_flow = flow_to_image((identity_grid[None] - flows_and_masks[:, 2:4]).flip([1,]))
+                    mask = (flows_and_masks[:, 4:5] * 127.5 + 127.5).expand(-1, 3, -1, -1).to(torch.uint8)
+                    # import ipdb; ipdb.set_trace()
 
-        video_out.close()
+                    high_res_flow = (identity_grid[None] -
+                                     (identity_grid[None] - flows_and_masks[:, 0:2])/sup_res_factor).permute(0, 2, 3, 1) * 2
+                for i in range(b_size):
+                    # import ipdb; ipdb.set_trace()
+                    # peep_frame = g_out['peep_vid'][0:1, :, :, :, b_id*b_size + i]
+                    # peep_frame = torch.nn.functional.interpolate(peep_frame, img_batch.shape[-1])
+                    # peep_frame = (peep_frame * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
+
+                    local_warped_clmp = (local_warped * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
+                    # mask 0 implies only local flow used
+                    # video_frame = make_grid([local_warped_clmp[0], peep_frame[0], img_batch[i], local_flow[i],
+                    #                          global_flow[i], mask[i]], 6, pad_value=255)
+                    if show_flow:
+                        video_frame = make_grid([local_warped_clmp[0], img_batch[i], local_flow[i],
+                                                 global_flow[i], mask[i]], 5, pad_value=255)
+                    else:
+                        video_frame = img_batch[i]
+
+                    video_out.append_data(video_frame.permute(1, 2, 0).cpu().numpy().astype(np.uint8))
+                    if show_flow:
+                        local_warped = torch.nn.functional.grid_sample(
+                            local_warped[0:1],  # .permute(0, 1, 3, 2),
+                            high_res_flow[i:i + 1],
+                            align_corners=True, )
+
+            video_out.close()
 
 
 #----------------------------------------------------------------------------
