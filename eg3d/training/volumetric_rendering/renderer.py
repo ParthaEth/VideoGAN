@@ -260,7 +260,8 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             # self.appearance_volume: batch, app_feat, t, h, w
             # Sample cods are flipping h and w in the following grid sample. swap appearnace feature h, w dims?
             sampled_features = torch.nn.functional.grid_sample(self.appearance_volume, sample_coordinates,
-                                                               align_corners=True, padding_mode='border').squeeze()
+                                                               align_corners=True, padding_mode='border')
+            sampled_features = sampled_features.squeeze(dim=tuple(range(1, sampled_features.ndim)))
             # sampled_features := batch, ch, 1, 1, n_pt -> squeez -> batch, ch, n_pt
             sampled_features = sampled_features.permute(0, 2, 1)  # batch, num_pts, features
             # import ipdb; ipdb.set_trace()
@@ -269,7 +270,8 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             # 5 =((w, h), (w, h), mask), # sample_coordinates: (batch, npts, dims (dims := h, w, t))
             # But grid sample assumes sample cods to have depth, with, height ordering so the permutation
             flows_and_mask = torch.nn.functional.grid_sample(self.lf_gfc_mask.permute(0, 4, 3, 1, 2), sample_coordinates,
-                                                             align_corners=True, padding_mode='border').squeeze()
+                                                             align_corners=True, padding_mode='border')
+            flows_and_mask = flows_and_mask.squeeze(dim=tuple(range(1, flows_and_mask.ndim)))
         else:
             flows_and_mask = None
 
@@ -356,7 +358,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
         colors_coarse, features, flows_and_mask = out['rgb'], out['features'], out['flows_and_mask']
 
         # render peep video
-        if c.shape[-1] >= 6:
+        if c.shape[-1] >= 6 and rendering_options.get('render_peep_vid', True):
             norm_peep_cod = c[:, 4:6] * 2 - 1
             assert (torch.all(-1.01 <= norm_peep_cod) and torch.all(norm_peep_cod + 2/4 <= 1.01))
             video_coordinates = []

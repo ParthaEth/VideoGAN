@@ -20,7 +20,6 @@ import numpy as np
 import torch
 import copy
 import imageio
-from fvcore.nn import FlopCountAnalysis
 
 
 
@@ -225,11 +224,6 @@ def generate_images(
                 #     torch.tensor([x0, y0, vel_p_frame[0], vel_p_frame[1]], dtype=torch.float32)[None, ...]
 
                 # import ipdb; ipdb.set_trace()
-
-                if flops is None:
-                    # flops, params = profile(G, inputs=(z, conditioning_params))
-                    flops = FlopCountAnalysis(G, (z, conditioning_params))
-                    print(f"Total tera-FLOPs: {flops.total()/1e12}")
                 ws = G.mapping(z, conditioning_params, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)
                 g_out = G.synthesis(ws, conditioning_params, noise_mode='const')
                 # import ipdb; ipdb.set_trace()

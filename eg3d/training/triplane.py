@@ -61,19 +61,26 @@ class TriPlaneGenerator(torch.nn.Module):
         # blur_to_res = {'10.00': 16, '5.00': 32, '2.50': 64, '1.25': 128, '0.00': 256}
         blur_to_res = {'10.00': 16, '5.00': 16, '2.50': 32, '1.25': 64, '0.00': 128}
 
+        if use_flow:
+            self.tot_feature_dim = self.appearance_features + self.motion_features
+            OSGDecoder_imp_dim = self.appearance_features
+        else:
+            self.tot_feature_dim = self.appearance_features * self.num_planes
+            OSGDecoder_imp_dim = self.tot_feature_dim
+
         print(f'Using {synthesis_kwargs["backbone"]}')
         if synthesis_kwargs['backbone'] == 'StyleGAN2':
             from training.networks_stylegan2 import Generator as StyleGAN2Backbone
             del synthesis_kwargs['backbone']
             self.backbone = StyleGAN2Backbone(z_dim, c_dim, w_dim, img_resolution=128,
-                                              img_channels=self.appearance_features + self.motion_features,
+                                              img_channels=self.tot_feature_dim,
                                               mapping_kwargs=mapping_kwargs, **synthesis_kwargs)
 
         elif synthesis_kwargs['backbone'] == 'StyleGANXL':
             from training.networks_stylegan_xl import UnifiedGenerator as StyleGANXLBackbone
             del synthesis_kwargs['backbone']
             self.backbone = StyleGANXLBackbone(z_dim, c_dim, w_dim, img_resolution=blur_to_res[data_blur_sigma],
-                                               img_channels=self.appearance_features + self.motion_features,
+                                               img_channels=self.tot_feature_dim,
                                                mapping_kwargs=mapping_kwargs, path_stem=path_stem,
                                                head_layers=head_layers, up_factor=up_factor, **synthesis_kwargs)
         elif synthesis_kwargs['backbone'] == 'StyleGANT':
@@ -89,13 +96,6 @@ class TriPlaneGenerator(torch.nn.Module):
         self.superresolution = dnnlib.util.construct_class_by_name(
             class_name=rendering_kwargs['superresolution_module'], channels=32, img_resolution=img_resolution,
             sr_num_fp16_res=sr_num_fp16_res, sr_antialias=rendering_kwargs['sr_antialias'], **sr_kwargs)
-
-        if use_flow:
-            self.tot_feature_dim = self.appearance_features + self.motion_features
-            OSGDecoder_imp_dim = self.appearance_features
-        else:
-            self.tot_feature_dim = self.appearance_features * self.num_planes
-            OSGDecoder_imp_dim = self.tot_feature_dim
 
         self.decoder = OSGDecoder(OSGDecoder_imp_dim,
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
@@ -146,6 +146,7 @@ class TriPlaneGenerator(torch.nn.Module):
         # N, M, _ = ray_origins.shape
         if use_cached_backbone and self._last_planes is not None:
             planes = self._last_planes
+            # print('used cached backbone')
         else:
             planes = self.backbone.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
         if cache_backbone:
@@ -161,7 +162,6 @@ class TriPlaneGenerator(torch.nn.Module):
         # Perform volume rendering
         # feature_samples, depth_samples, weights_samples = \
         #     self.renderer(planes, self.decoder, ray_origins, ray_directions, self.rendering_kwargs) # channels last
-        # import ipdb; ipdb.set_trace()
         rgb_image, peep_video, features, flows_and_masks = self.renderer(planes, self.decoder, c, None,
                                                                          self.rendering_kwargs)  # channels last
 
@@ -363,4 +363,5 @@ class OSGDecoder(torch.nn.Module):
         synth_h = synth_h.view(batch_size, time_steps, -1, rend_cols, rend_cols)
         synth_h = synth_h.permute(0, 3, 4, 1, 2).reshape(batch_size, num_pts, -1)
 
-        return {'rgb': img.squeeze(), 'features': synth_h.squeeze()}
+        return {'rgb': img.squeeze(dim=tuple(range(1, img.ndim))),
+                'features': synth_h.squeeze(dim=tuple(range(1, synth_h.ndim)))}
