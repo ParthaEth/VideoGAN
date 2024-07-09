@@ -3,20 +3,36 @@ import imageio
 import numpy as np
 from PIL import Image
 
+# # Ours
+# # Define your video directories
+# video_directories = \
+#     ['/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/video',
+#      '/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00019-ffhq-train_clips-gpus8-batch128-gamma1/videos_160_frames',
+#      '/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00021-ffhq-fasion_video_bdmm-gpus8-batch128-gamma1/video']
+# # video_idxs = {video_directories[0]: [1118], video_directories[1]: [0], video_directories[2]: [123],}
+# video_idxs = {video_directories[0]: [521], video_directories[1]: [1], video_directories[2]: [1268],}
+
+# # MoCoGAN
+# # Define your video directories
+# video_directories = \
+#     ['/is/cluster/scratch/ssanyal/video_gan/mocogan/fashion_video_bdmm_all/output/network-snapshot-002073_FID_trunc_0.7',
+#      '/is/cluster/scratch/ssanyal/video_gan/mocogan/ffhq_X_celebv_hq_all_new/output/network-snapshot-005184_FID_trunc_0.7']
+# # video_idxs = {video_directories[0]: [1118], video_directories[1]: [0], video_directories[2]: [123],}
+# video_idxs = {video_directories[0]: [523], video_directories[1]: [1],}
+
+# StyleGAN-V
 # Define your video directories
 video_directories = \
-    ['/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/video',
-     '/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00019-ffhq-train_clips-gpus8-batch128-gamma1/videos_160_frames',
-     '/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00021-ffhq-fasion_video_bdmm-gpus8-batch128-gamma1/video']
-# video_idxs = {video_directories[0]: [1118], video_directories[1]: [0], video_directories[2]: [123],}
-video_idxs = {video_directories[0]: [521], video_directories[1]: [1], video_directories[2]: [1268],}
+    ['/is/cluster/scratch/ssanyal/video_gan/stylegan_V/fasion_video_bdmm_all/more_frames/output/vids_019699/',
+     '/is/cluster/scratch/ssanyal/video_gan/stylegan_V/ffhq_X_celebv_hq/output/network-snapshot-023846_vids']
+video_idxs = {video_directories[0]: [521], video_directories[1]: [10],}
 
 # Set parameters
 n_frames = 6
 output_width = 256 * n_frames  # Width of the output image
 output_height = 256  # Height of the output image
 # frame_interval = 13  # Interval between frames (e.g., every 30 frames)
-frame_interval = 26  # Interval between frames (e.g., every 30 frames)
+frame_interval = 21  # Interval between frames (e.g., every 30 frames)
 
 # Create an output directory
 output_directory = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/paper_images/teaser'
@@ -28,9 +44,13 @@ def extract_frames(video_path, frame_interval):
     frames = []
     with imageio.get_reader(video_path, 'ffmpeg') as video:
         num_frames = frame_interval * n_frames
-        for frame_num in range(0, num_frames, frame_interval):
-            frame = video.get_data(frame_num)
-            frames.append(frame)
+        try:
+            for frame_num in range(0, num_frames, frame_interval):
+                frame = video.get_data(frame_num)
+                frames.append(frame)
+        except Exception as e:
+            print(video_path)
+            raise e
     return frames
 
 
@@ -40,6 +60,7 @@ for i, video_directory in enumerate(video_directories):
     for video_file in np.array(sorted(os.listdir(video_directory)))[video_idxs[video_directory]]:
         if video_file.endswith('.mp4'):  # Change the video format if needed
             video_path = os.path.join(video_directory, video_file)
+            print(f'{video_path}')
             frames = extract_frames(video_path, frame_interval)
             output_frames.extend(frames)
 

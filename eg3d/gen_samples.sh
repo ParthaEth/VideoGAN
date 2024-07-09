@@ -8,7 +8,7 @@ fi
 
 run_id="$1"
 vids_p_run=21
-offset=0
+offset=3000
 
 # Calculate start_id and end_id
 start_id=$((run_id * vids_p_run + offset))
@@ -32,9 +32,19 @@ for trunc in "${trunc_coeffs[@]}"; do
 #  --outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=$trunc --show_flow=False \
 #  --num_frames=$num_frames --reload_modules=False --cfg=$cfg --use_flow=True
 
+
   echo "run_id = fashion_videos"
-  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00023-ffhq-fasion_video_bdmm_all-gpus8-batch128-gamma1/videos_trunk_$trunc"
-  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00023-ffhq-fasion_video_bdmm_all-gpus8-batch128-gamma1/network-snapshot-000082.pkl"
+  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00032-ffhq-fasion_video_bdmm_all-gpus4-batch256-gamma1/videos_000491_trunk_$trunc"
+  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00032-ffhq-fasion_video_bdmm_all-gpus4-batch256-gamma1/network-snapshot-000491.pkl"
+  cfg="ffhq"
+
+  /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
+  --outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=$trunc --show_flow=False \
+  --num_frames=$num_frames --reload_modules=False --cfg=$cfg --use_flow=True
+
+  echo "run_id = fashion_videos"
+  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00032-ffhq-fasion_video_bdmm_all-gpus4-batch256-gamma1/videos_000573_trunk_$trunc"
+  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00032-ffhq-fasion_video_bdmm_all-gpus4-batch256-gamma1/network-snapshot-000573.pkl"
   cfg="ffhq"
 
   /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
@@ -42,13 +52,31 @@ for trunc in "${trunc_coeffs[@]}"; do
   --num_frames=$num_frames --reload_modules=False --cfg=$cfg --use_flow=True
 
 
-  echo "run_id = ucf"
-  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00014-ffhq-clips-gpus4-batch128-gamma1/videos_trunk_$trunc"
-  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00014-ffhq-clips-gpus4-batch128-gamma1/network-snapshot-000573.pkl"
+
+#  echo "run_id = ucf"
+#  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00026-ffhq-clips-gpus4-batch256-gamma1/videos_001638_trunk_$trunc"
+#  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/ucf101/00026-ffhq-clips-gpus4-batch256-gamma1/network-snapshot-001638.pkl"
+#  cfg="ffhq"
+#
+#  /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
+#  --outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=$trunc --show_flow=False \
+#  --num_frames=$num_frames --reload_modules=False --cfg=$cfg --use_flow=True
+#
+  echo "run_id = ffhq"
+  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/FFHQXcelebVHQ/00023-ffhq-ffhq_X_celebv_hq-gpus4-batch256-gamma1/videos_000491_trunk_$trunc"
+  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/FFHQXcelebVHQ/00023-ffhq-ffhq_X_celebv_hq-gpus4-batch256-gamma1/network-snapshot-000491.pkl"
   cfg="ffhq"
 
   /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
   --outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=$trunc --show_flow=False \
   --num_frames=$num_frames --reload_modules=False --cfg=$cfg --use_flow=True
 
+  echo "run_id = ffhq"
+  out_dir="/is/cluster/fast/pghosh/ouputs/video_gan_runs/FFHQXcelebVHQ/00023-ffhq-ffhq_X_celebv_hq-gpus4-batch256-gamma1/videos_000573_trunk_$trunc"
+  network="/is/cluster/fast/pghosh/ouputs/video_gan_runs/FFHQXcelebVHQ/00023-ffhq-ffhq_X_celebv_hq-gpus4-batch256-gamma1/network-snapshot-000573.pkl"
+  cfg="ffhq"
+
+  /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python gen_samples.py \
+  --outdir=$out_dir --network=$network --seeds=$start_id-$end_id --img_type=sr_image --trunc=$trunc --show_flow=False \
+  --num_frames=$num_frames --reload_modules=False --cfg=$cfg --use_flow=True
 done
