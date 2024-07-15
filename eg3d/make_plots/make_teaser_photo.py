@@ -9,14 +9,14 @@ video_directories = \
      '/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00019-ffhq-train_clips-gpus8-batch128-gamma1/videos_160_frames',
      '/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00021-ffhq-fasion_video_bdmm-gpus8-batch128-gamma1/video']
 # video_idxs = {video_directories[0]: [1118], video_directories[1]: [0], video_directories[2]: [123],}
-video_idxs = {video_directories[0]: [521], video_directories[1]: [1], video_directories[2]: [1268],}
+video_idxs = {video_directories[0]: [155], video_directories[1]: [10], video_directories[2]: [150],}
 
 # Set parameters
 n_frames = 6
 output_width = 256 * n_frames  # Width of the output image
 output_height = 256  # Height of the output image
 # frame_interval = 13  # Interval between frames (e.g., every 30 frames)
-frame_interval = 26  # Interval between frames (e.g., every 30 frames)
+frame_interval = 21  # Interval between frames (e.g., every 30 frames)
 
 # Create an output directory
 output_directory = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/paper_images/teaser'
@@ -56,6 +56,6 @@ for i, video_directory in enumerate(video_directories):
         output_image.paste(frame, (j * frame_width, 0))
 
     # Save the output image
-    output_image.save(os.path.join(output_directory, f'{i}.png'))
+    output_image.save(os.path.join(output_directory, f'{video_idxs[video_directories[i]][0]}.png'))
 
 print(f'Images created and saved in the output directory: \n {output_directory}.')

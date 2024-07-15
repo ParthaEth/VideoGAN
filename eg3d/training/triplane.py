@@ -241,7 +241,7 @@ class TriPlaneGenerator(torch.nn.Module):
         planes = planes.view(len(planes), self.num_planes, self.appearance_features, planes.shape[-2], planes.shape[-1])
         return self.renderer.run_model(planes, self.decoder, coordinates, directions, self.rendering_kwargs)
 
-    def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, neural_rendering_resolution=None,
+    def forward(self, z, c=None, truncation_psi=1, truncation_cutoff=None, neural_rendering_resolution=None,
                 update_emas=False, cache_backbone=False, use_cached_backbone=False, **synthesis_kwargs):
         # Render a batch of generated images.
         # import ipdb; ipdb.set_trace()

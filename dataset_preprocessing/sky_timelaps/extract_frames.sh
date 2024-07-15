@@ -24,6 +24,7 @@ fi
 # Extract the run_id from the command-line argument
 run_id="$1"
 
+# uncomment something
 # Specify the root directory where your MP4 videos are located
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/sky_timelapse/video_clips"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/sky_timelapse"
@@ -37,6 +38,9 @@ run_id="$1"
 vid_src_dir="/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_celebv_hq/"
 dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ffhq_X_celebv_hq_all_new/"
 
+#vid_src_dir="/is/cluster/fast/pghosh/datasets/ucf101/clips"
+#dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ucf_101"
+
 if [ ! -d "$dest_root" ]; then
     mkdir "$dest_root"
 fi
@@ -47,8 +51,41 @@ if [ ! -d "$vid_src_dir" ]; then
     exit 1
 fi
 
+
 # Define the number of videos to process per run
-vids_per_process=400   # Adjust as needed
+vids_per_process=185   # Adjust as needed
+
+
+check_and_fix_corrupted_files() {
+    local output_directory="$1"
+    local video_file="$2"
+    local corrupted=false
+
+    # Check if any frame files exist in the directory
+    if compgen -G "${output_directory}/frame*.jpg" > /dev/null; then
+        for file in "${output_directory}"/frame*.jpg; do
+            if [ -f "$file" ]; then
+                # Check if the image file is valid
+                if ! identify "$file" &> /dev/null; then
+                    echo "Corrupted file detected: $file"
+                    corrupted=true
+                    break
+                fi
+            fi
+        done
+    else
+        # No frames exist, set corrupted to true to trigger extraction
+        corrupted=true
+    fi
+
+    # Re-extract frames if corrupted or no frames found
+    if [ "$corrupted" = true ]; then
+        echo "Extracting frames from $video_file to $output_directory"
+        ffmpeg -i "$video_file" -q:v 3 "$output_directory/frame%04d.jpg"
+    fi
+}
+
+
 
 # Calculate start_index and end_index based on run_id and vids_per_process
 start_index=$((run_id * vids_per_process))
@@ -61,25 +98,20 @@ mapfile -t sorted_files < <(find "$vid_src_dir" -maxdepth 1 -type f -name "*.mp4
 for ((i = start_index; i < end_index && i < ${#sorted_files[@]}; i++)); do
     video_file="${sorted_files[i]}"
     if [ -f "$video_file" ]; then
-        # Extract the video file name (without extension) to create a directory
         video_name=$(basename "$video_file" .mp4)
         output_directory="$dest_root/$video_name"
 
-        # Create a directory with the video name if it doesn't exist
+        # Ensure the output directory exists
         if [ ! -d "$output_directory" ]; then
             mkdir "$output_directory"
         fi
 
-        # Use ffmpeg to extract frames into the corresponding directory
-        ffmpeg -i "$video_file" -q:v 3 "$output_directory/frame%04d.jpg"
-        chmod +w "$output_directory"/*.jpg
-        check_extracted_files "$output_directory"
+        chmod +w "$output_directory"/*.jpg 2>/dev/null
+        check_and_fix_corrupted_files "$output_directory" "$video_file"
 
         # select every 5th frame
 #        ffmpeg -i "$video_file" -q:v 3 -vf "select='not(mod(n\,5))'" -vframes 32 "$output_directory/frame%04d.jpg"
 
-
-        echo "Extracted frames from $video_file to $output_directory/"
     fi
 done
 
