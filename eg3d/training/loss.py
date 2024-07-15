@@ -88,7 +88,7 @@ class StyleGAN2Loss(Loss):
                 f = torch.arange(-blur_size, blur_size + 1, device=img['image'].device).div(blur_sigma).square().neg().exp2()
                 img['image'] = upfirdn2d.filter2d(img['image'], f / f.sum())
 
-        if self.augment_pipe is not None:
+        if self.augment_pipe is not None:  #@pravir here is how to do ada augmentation with more than 3 channel images. You might not have to do as we have perhaps no augmentation pipeline
             augmented_pair = self.augment_pipe(
                 torch.cat([img['image'],
                 torch.nn.functional.interpolate(img['image_raw'], size=img['image'].shape[2:], mode='bilinear',
@@ -239,7 +239,7 @@ class StyleGAN2Loss(Loss):
             name = 'Dreal' if phase == 'Dmain' else 'Dr1' if phase == 'Dreg' else 'Dreal_Dr1'
             with torch.autograd.profiler.record_function(name + '_forward'):
                 real_img_tmp_image = real_img['image'].detach().requires_grad_(phase in ['Dreg', 'Dboth'])
-                real_img_tmp_image_raw = real_img['image_raw'].detach().requires_grad_(phase in ['Dreg', 'Dboth'])
+                real_img_tmp_image_raw = real_img['image_raw'].detach().requires_grad_(phase in ['Dreg', 'Dboth'])  #@pravir we must get low resolution version of real iamges. here image_raw is low res version
                 peep_vid_real_temp = peep_vid_real.detach().requires_grad_(phase in ['Dreg', 'Dboth'])
                 real_img_tmp = {'image': real_img_tmp_image, 'image_raw': real_img_tmp_image_raw,
                                 'peep_vid': peep_vid_real_temp}
@@ -262,7 +262,7 @@ class StyleGAN2Loss(Loss):
                         with torch.autograd.profiler.record_function('r1_grads'), conv2d_gradfix.no_weight_gradients():
                             r1_grads = torch.autograd.grad(
                                 outputs=[real_logits.sum() + real_video_logits.sum()],
-                                inputs=[real_img_tmp['image'], real_img_tmp['image_raw'], real_img_tmp['peep_vid']],
+                                inputs=[real_img_tmp['image'], real_img_tmp['image_raw'], real_img_tmp['peep_vid']],   #@pravir we must apply gradient penalty with all discriminator input. StyleGAN per doesn't ahve gradient penalty. So you might not have this
                                 create_graph=True, only_inputs=True, allow_unused=True)
 
                             r1_grads_image_pen = r1_grads_image_raw_pen = r1_grads_peep_vid_pen = 0

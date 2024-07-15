@@ -172,6 +172,7 @@ def generate_images(
 
         init_kwargs = copy.deepcopy(G.init_kwargs)
         init_kwargs['use_flow'] = use_flow
+        init_kwargs['backbone'] = 'StyleGANT'
         if config.lower() == 'ffhq' or config.lower() == 'fashion_video':
             init_kwargs.rendering_kwargs.update({'global_flow_div': 16, 'local_flow_div': 64})
         elif config.lower() == 'sky_timelapse':

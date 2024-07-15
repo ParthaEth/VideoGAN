@@ -35,8 +35,8 @@ run_id="$1"
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/fashion_video_bdmm_all"
 
-vid_src_dir="/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_celebv_hq/"
-dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ffhq_X_celebv_hq_all_new/"
+vid_src_dir="/is/cluster/fast/pghosh/datasets/ucf101/clips/"
+dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/UCF101/"
 
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/ucf101/clips"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ucf_101"
@@ -86,6 +86,7 @@ check_and_fix_corrupted_files() {
 }
 
 
+vids_per_process=600   # Adjust as needed
 
 # Calculate start_index and end_index based on run_id and vids_per_process
 start_index=$((run_id * vids_per_process))
