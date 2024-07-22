@@ -7,8 +7,8 @@ parser = ArgumentParser()
 parser.add_argument("--pid", type=int, help="path to config")
 args = parser.parse_args()
 
-src_dir = '/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ffhq_X_10_good_motions_10_motions'
-n_files_per_process = 100
+src_dir = '/is/cluster/scratch/ssanyal/video_gan/fashion_videos/webvid10M_flowers'
+n_files_per_process = 138
 files_this_process = sorted(os.listdir(src_dir))
 files_this_process = files_this_process[args.pid * n_files_per_process:args.pid * n_files_per_process + n_files_per_process]
 

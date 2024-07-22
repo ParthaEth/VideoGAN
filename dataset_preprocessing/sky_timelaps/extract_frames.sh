@@ -35,8 +35,8 @@ run_id="$1"
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/fashion_video_bdmm_all"
 
-vid_src_dir="/is/cluster/fast/pghosh/datasets/ucf101/clips/"
-dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/UCF101/"
+vid_src_dir="/is/cluster/fast/scratch/pghosh/dataset/webvid10M/flower_train_256X256X161_clips"
+dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/webvid10M_flowers"
 
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/ucf101/clips"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ucf_101"
@@ -50,10 +50,6 @@ if [ ! -d "$vid_src_dir" ]; then
     echo "Root directory not found: $vid_src_dir"
     exit 1
 fi
-
-
-# Define the number of videos to process per run
-vids_per_process=185   # Adjust as needed
 
 
 check_and_fix_corrupted_files() {
@@ -81,12 +77,13 @@ check_and_fix_corrupted_files() {
     # Re-extract frames if corrupted or no frames found
     if [ "$corrupted" = true ]; then
         echo "Extracting frames from $video_file to $output_directory"
-        ffmpeg -i "$video_file" -q:v 3 "$output_directory/frame%04d.jpg"
+#        ffmpeg -i "$video_file" -q:v 3 "$output_directory/frame%04d.jpg"
+         ffmpeg -i "$video_file" -q:v 3 -vf "select='not(mod(n\,5))'" -vframes 32 "$output_directory/frame%04d.jpg"
     fi
 }
 
 
-vids_per_process=600   # Adjust as needed
+vids_per_process=207   # Adjust as needed
 
 # Calculate start_index and end_index based on run_id and vids_per_process
 start_index=$((run_id * vids_per_process))

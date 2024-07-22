@@ -101,6 +101,8 @@ class TriPlaneGenerator(torch.nn.Module):
                                   {'decoder_lr_mul': rendering_kwargs.get('decoder_lr_mul', 1),
                                    'decoder_output_dim': 32})
 
+        rendering_kwargs['use_cached'] = False  #During training the renderer should prepare feature volume every time
+
         ########################### Load pre-trained ###################################################
         # pre_trained = torch.load('/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/'
         #                          'rend_and_dec_256_rend.pytorch')

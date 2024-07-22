@@ -1,17 +1,20 @@
-executable = extract_frames.sh
+executable = prune_out_bad_vids_or_dirs.sh
 arguments = $(Process) -alht
 error = logs/test_$(Process).err
 output = logs/test_$(Process).out
 log = logs/test_$(Process).log
-request_memory = 32000
+request_memory = 64000
+request_gpus = 0
 request_cpus = 4
+# requirements = CUDADeviceName=="NVIDIA A100-SXM4-80GB"
+requirements = TARGET.CUDAGlobalMemoryMb > 30000
 getenv = True
 
 # max #jobs is given by 10000/ number after : so now 10000/400 = 25
 # concurrency_limits=user.biggpus:400
 
 # Maximum expected execution time for the job, in seconds
-MaxTime = 400*3600
+MaxTime = 4*3600
 # Number of retries before giving up
 NumRetries = 0
 
@@ -24,5 +27,6 @@ periodic_release = ( (JobStatus =?= 5) && (HoldReasonCode =?= 3) && (HoldReasonS
 # Uncomment this line if you want the jobs automatically removed from the queue
 # periodic_remove = ( (JobStatus =?= 5) && (HoldReasonCode =?= 3) && (HoldReasonSubCode =?= 2) )
 
-
-queue 300
+#+MaxRunningPrice = 50
+#+RunningPriceExceededAction = "restart"
+queue 450
