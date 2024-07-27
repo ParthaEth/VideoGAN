@@ -206,8 +206,13 @@ class AxisAligndProjectionRenderer(BaseRenderer):
     def forward_warp(self, feature_frame, grid):
         return torch.nn.functional.grid_sample(feature_frame, grid, align_corners=True)
 
-    def prepare_feature_volume(self, feature_grid, options, bypass_network=False):
+    def prepare_feature_volume(self, feature_grid, options):
         """Plane: a torch tensor b, 1, 38, h, w"""
+        if options['use_cached'] and self.lf_gfc_mask is not None and self.appearance_volume is not None:
+            if not options['dont_print_warning']:
+                print('Using cached appearance')
+            return
+
         rend_res = options['neural_rendering_resolution']
         # fist self.motion_features are assumed to be motion features
         feature_grid_type = options.get('feature_grid_type', 'triplane')  # default to triplane type for backward comp
@@ -304,7 +309,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             batch_size, _, _, _, _ = feature_grid.shape
 
         if self.use_flow:
-            self.prepare_feature_volume(feature_grid, rendering_options, bypass_network=False)
+            self.prepare_feature_volume(feature_grid, rendering_options)
         else:
             self.planes = feature_grid
 

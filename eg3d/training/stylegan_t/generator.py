@@ -446,7 +446,7 @@ class SynthesisNetwork(torch.nn.Module):
         channel_max: int = 512,     # Maximum number of channels in any layer.
         num_fp16_res: int = 4,      # Use FP16 for the N highest resolutions.
         base_mult: int = 3,         # Start resolution (SG2: 2, SG3: 4, SG-T: 3).
-        num_res_blocks: int = 3,        # Number of residual blocks.
+        num_res_blocks: int = 3,    # Number of residual blocks.
         **block_kwargs,             # Arguments for SynthesisBlock.
     ):
         assert img_resolution >= 4 and img_resolution & (img_resolution - 1) == 0
