@@ -18,9 +18,9 @@ import imageio
 import torchvision
 import tqdm
 
-from vg_training.triplane import OSGDecoder
-from vg_training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
-from vg_training.superresolution import SuperresolutionHybrid4X
+from training.triplane import OSGDecoder
+from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
+from training.superresolution import SuperresolutionHybrid4X
 import dnnlib
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 from positional_encodings.torch_encodings import PositionalEncodingPermute3D

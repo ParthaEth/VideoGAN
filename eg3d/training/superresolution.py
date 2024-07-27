@@ -168,7 +168,7 @@ class SynthesisBlockNoUp(torch.nn.Module):
         conv_clamp              = 256,          # Clamp the output of convolution layers to +-X, None = disable clamping.
         use_fp16                = False,        # Use FP16 for this block?
         fp16_channels_last      = False,        # Use channels-last memory format with FP16?
-        fused_modconv_default   = True,         # Default value of fused_modconv. 'inference_only' = True for inference, False for vg_training.
+        fused_modconv_default   = True,         # Default value of fused_modconv. 'inference_only' = True for inference, False for training.
         **layer_kwargs,                         # Arguments for SynthesisLayer.
     ):
         assert architecture in ['orig', 'skip', 'resnet']

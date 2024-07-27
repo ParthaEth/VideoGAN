@@ -17,7 +17,7 @@ from torch_utils import persistence
 from torch_utils.ops import upfirdn2d
 from training.networks_stylegan2 import DiscriminatorBlock, MappingNetwork, DiscriminatorEpilogue
 from training.video_discriminator import VideoDiscriminator
-# from vg_training.pg_modules.discriminator import ProjectedDiscriminator
+# from training.pg_modules.discriminator import ProjectedDiscriminator
 from training.stylegan_t.discriminator import ProjectedDiscriminator as DinoDiscriminator
 import dnnlib
 

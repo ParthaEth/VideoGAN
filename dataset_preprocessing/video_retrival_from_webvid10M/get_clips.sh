@@ -11,4 +11,4 @@ fi
 /home/pghosh/miniconda3/envs/VideoGan80GB_STG_T_2/bin/python get_256X256_crops.py \
 --run_id $1 \
 --total_runs $2 \
---output_directory /is/cluster/fast/scratch/pghosh/dataset/webvid10M/flower_train_256X256X161_clips
+--output_directory /is/cluster/scratch/pghosh/dataset/WebVid_10M/flower_train_vids_no_watermark_256X256X161_crops \

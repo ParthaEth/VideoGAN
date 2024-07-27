@@ -4,12 +4,19 @@ import numpy as np
 from PIL import Image
 
 # Define your video directories
+# video_directories = \
+#     ['/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/video',
+#      '/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00019-ffhq-train_clips-gpus8-batch128-gamma1/videos_160_frames',
+#      '/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00021-ffhq-fasion_video_bdmm-gpus8-batch128-gamma1/video']
+
 video_directories = \
-    ['/is/cluster/fast/pghosh/ouputs/video_gan_runs/ten_motions/00086-ffhq-ffhq_X_10_good_motions_10_motions-gpus8-batch32-gamma1/video',
-     '/is/cluster/fast/pghosh/ouputs/video_gan_runs/sky_timelapse/00019-ffhq-train_clips-gpus8-batch128-gamma1/videos_160_frames',
-     '/is/cluster/fast/pghosh/ouputs/video_gan_runs/fashion_vids/bdmm/00021-ffhq-fasion_video_bdmm-gpus8-batch128-gamma1/video']
+    ['/is/cluster/fast/pghosh/ouputs/video_gan_runs/webvid_10M_flowers/random_crops/00005-ffhq--gpus8-batch128-gamma1/videos_001966_trunk_1.0']
+
+# for x in range(10, 15):
+
 # video_idxs = {video_directories[0]: [1118], video_directories[1]: [0], video_directories[2]: [123],}
-video_idxs = {video_directories[0]: [155], video_directories[1]: [10], video_directories[2]: [150],}
+# video_idxs = {video_directories[0]: [155], video_directories[1]: [10], video_directories[2]: [150],}
+video_idxs = {video_directories[0]: [14], }
 
 # Set parameters
 n_frames = 6
@@ -19,7 +26,7 @@ output_height = 256  # Height of the output image
 frame_interval = 21  # Interval between frames (e.g., every 30 frames)
 
 # Create an output directory
-output_directory = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/paper_images/teaser'
+output_directory = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/paper_images/teaser/flowers'
 os.makedirs(output_directory, exist_ok=True)
 
 
@@ -56,6 +63,6 @@ for i, video_directory in enumerate(video_directories):
         output_image.paste(frame, (j * frame_width, 0))
 
     # Save the output image
-    output_image.save(os.path.join(output_directory, f'{video_idxs[video_directories[i]][0]}.png'))
+    output_image.save(os.path.join(output_directory, f'{video_idxs[video_directories[i]][0]}_{video_file[:-4]}.png'))
 
 print(f'Images created and saved in the output directory: \n {output_directory}.')

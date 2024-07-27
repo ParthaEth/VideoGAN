@@ -122,7 +122,7 @@ class MappingNetwork(torch.nn.Module):
         num_ws,                     # Number of intermediate latents to output.
         num_layers      = 2,        # Number of mapping layers.
         lr_multiplier   = 0.01,     # Learning rate multiplier for the mapping layers.
-        w_avg_beta      = 0.998,    # Decay for tracking the moving average of W during vg_training.
+        w_avg_beta      = 0.998,    # Decay for tracking the moving average of W during training.
         rand_embedding = False,     # Use random weights for class embedding
     ):
         super().__init__()
@@ -134,7 +134,7 @@ class MappingNetwork(torch.nn.Module):
         self.w_avg_beta = w_avg_beta
 
         # additions
-        embed_path = 'vg_training/in_embeddings/tf_efficientnet_lite0.pkl'
+        embed_path = 'training/in_embeddings/tf_efficientnet_lite0.pkl'
         with open(embed_path, 'rb') as f:
             self.embed = dill.Unpickler(f).load()['embed']
         print(f'loaded imagenet embeddings from {embed_path}: {self.embed}')

@@ -35,8 +35,8 @@ run_id="$1"
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/fashion_video_bdmm_all"
 
-vid_src_dir="/is/cluster/fast/scratch/pghosh/dataset/webvid10M/flower_train_256X256X161_clips"
-dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/webvid10M_flowers"
+vid_src_dir="/is/cluster/scratch/pghosh/dataset/WebVid_10M/flower_train_vids_cnst_loc_watermark_256X256X161_crops"
+dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/flower_train_vids_cnst_loc_watermark_256X256X32_crops"
 
 #vid_src_dir="/is/cluster/fast/pghosh/datasets/ucf101/clips"
 #dest_root="/is/cluster/scratch/ssanyal/video_gan/fashion_videos/ucf_101"

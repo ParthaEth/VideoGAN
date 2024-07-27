@@ -116,7 +116,7 @@ class MappingNetwork(torch.nn.Module):
         num_ws,                     # Number of intermediate latents to output.
         num_layers      = 2,        # Number of mapping layers.
         lr_multiplier   = 0.01,     # Learning rate multiplier for the mapping layers.
-        w_avg_beta      = 0.998,    # Decay for tracking the moving average of W during vg_training.
+        w_avg_beta      = 0.998,    # Decay for tracking the moving average of W during training.
     ):
         super().__init__()
         self.z_dim = z_dim
