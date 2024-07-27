@@ -99,7 +99,7 @@ class SingleDiscCond(nn.Module):
         self.cls = conv2d(nfc[end_sz], self.cmap_dim, 4, 1, 0, bias=False)
 
         # Pretrained Embeddings
-        embed_path = 'training/in_embeddings/tf_efficientnet_lite0.pkl'
+        embed_path = 'vg_training/in_embeddings/tf_efficientnet_lite0.pkl'
         with open(embed_path, 'rb') as f:
             self.embed = dill.Unpickler(f).load()['embed']
         print(f'loaded imagenet embeddings from {embed_path}: {self.embed}')

@@ -12,18 +12,22 @@ CC=gcc-7
 
 if ((run_id % 2 == 0)); then
   # Perform interpolation
+#  datasets=(\
+#  "/is/cluster/fast/pghosh/datasets/ucf101/clips" \
+#  "/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_celebv_hq")
   datasets=(\
-  "/is/cluster/fast/pghosh/datasets/ucf101/clips" \
-  "/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_celebv_hq")
+  "/is/cluster/fast/scratch/pghosh/dataset/webvid10M/flower_train_256X256X161_clips")
   eipl='interpolate'
 else
   # perform extrapolation
+#  datasets=(\
+#  "/is/cluster/fast/pghosh/datasets/ucf101/clips" \
+#  "/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_celebv_hq" \
+#  "/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_10_good_motions_10_motions/ffhq_X_10_good_motions_10_motions_all" \
+#  "/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all" \
+#  "/is/cluster/fast/pghosh/datasets/sky_timelapse/train_clips")
   datasets=(\
-  "/is/cluster/fast/pghosh/datasets/ucf101/clips" \
-  "/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_celebv_hq" \
-  "/is/cluster/fast/pghosh/datasets/ffhqXcelebVhq_firstorder_motion_model/ffhq_X_10_good_motions_10_motions/ffhq_X_10_good_motions_10_motions_all" \
-  "/is/cluster/fast/pghosh/datasets/fashion_videos/fasion_video_bdmm/fasion_video_bdmm_all" \
-  "/is/cluster/fast/pghosh/datasets/sky_timelapse/train_clips")
+  "/is/cluster/fast/scratch/pghosh/dataset/webvid10M/flower_train_256X256X161_clips")
   eipl='extrapolate'
 fi
 

@@ -5,8 +5,8 @@ import argparse
 import random
 
 # Append the parent directory to sys.path to allow relative imports
-sys.path.append('../')
-sys.path.append('../../')
+sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('../../'))
 
 import shutil
 import torch
@@ -18,9 +18,9 @@ import imageio
 import torchvision
 import tqdm
 
-from training.triplane import OSGDecoder
-from training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
-from training.superresolution import SuperresolutionHybrid4X
+from vg_training.triplane import OSGDecoder
+from vg_training.volumetric_rendering.renderer import AxisAligndProjectionRenderer
+from vg_training.superresolution import SuperresolutionHybrid4X
 import dnnlib
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 from positional_encodings.torch_encodings import PositionalEncodingPermute3D
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     b_size = 16
     load_saved = False
     ssim = StructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)).to(device)
-    out_dir = f'/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/' \
+    out_dir = f'/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/webvid-flowers/' \
               f'{args.intr_or_extrapolation}/{args.feature_grid_type}/{args.num_missing_frames} frames'
     os.makedirs(out_dir, exist_ok=True)
     # video_root = '/is/cluster/fast/pghosh/datasets/fasion_video_bdmm/'

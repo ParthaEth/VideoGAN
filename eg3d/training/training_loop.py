@@ -8,7 +8,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-"""Main training loop."""
+"""Main vg_training loop."""
 
 import os
 import time
@@ -41,14 +41,14 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
     gw = np.clip(2560 // training_set.image_shape[2], 7, 32)
     gh = np.clip(1440 // training_set.image_shape[1], 4, 32)
 
-    # No labels => show random subset of training samples.
+    # No labels => show random subset of vg_training samples.
     if not training_set.has_labels:
         all_indices = list(range(len(training_set)))
         rnd.shuffle(all_indices)
         grid_indices = [all_indices[i % len(all_indices)] for i in range(gw * gh)]
 
     else:
-        # Group training samples by label.
+        # Group vg_training samples by label.
         label_groups = dict() # label => [idx, ...]
         for idx in range(len(training_set)):
             label = tuple(training_set.get_details(idx).raw_label.flat[::-1])
@@ -153,7 +153,7 @@ def save_video_grid(video, fname, drange, grid_size, labels=None):
 
 def training_loop(
     run_dir                 = '.',      # Output directory.
-    training_set_kwargs     = {},       # Options for training set.
+    training_set_kwargs     = {},       # Options for vg_training set.
     data_loader_kwargs      = {},       # Options for torch.utils.data.DataLoader.
     G_kwargs                = {},       # Options for generator network.
     D_kwargs                = {},       # Options for discriminator network.
@@ -161,11 +161,11 @@ def training_loop(
     D_opt_kwargs            = {},       # Options for discriminator optimizer.
     augment_kwargs          = None,     # Options for augmentation pipeline. None = disable.
     loss_kwargs             = {},       # Options for loss function.
-    metrics                 = [],       # Metrics to evaluate during training.
+    metrics                 = [],       # Metrics to evaluate during vg_training.
     random_seed             = 0,        # Global random seed.
-    num_gpus                = 1,        # Number of GPUs participating in the training.
+    num_gpus                = 1,        # Number of GPUs participating in the vg_training.
     rank                    = 0,        # Rank of the current process in [0, num_gpus[.
-    batch_size              = 4,        # Total batch size for one training iteration. Can be larger than batch_gpu * num_gpus.
+    batch_size              = 4,        # Total batch size for one vg_training iteration. Can be larger than batch_gpu * num_gpus.
     batch_gpu               = 4,        # Number of samples processed at a time by one GPU.
     ema_kimg                = 10,       # Half-life of the exponential moving average (EMA) of generator weights.
     ema_rampup              = 0.05,     # EMA ramp-up coefficient. None = no rampup.
@@ -175,35 +175,35 @@ def training_loop(
     ada_target              = None,     # ADA target value. None = fixed p.
     ada_interval            = 4,        # How often to perform ADA adjustment?
     ada_kimg                = 500,      # ADA adjustment speed, measured in how many kimg it takes for p to increase/decrease by one unit.
-    total_kimg              = 25000,    # Total length of the training, measured in thousands of real images.
+    total_kimg              = 25000,    # Total length of the vg_training, measured in thousands of real images.
     kimg_per_tick           = 4,        # Progress snapshot interval.
     image_snapshot_ticks    = 50,       # How often to save image snapshots? None = disable.
     network_snapshot_ticks  = 50,       # How often to save network snapshots? None = disable.
-    resume_pkl              = None,     # Network pickle to resume training from.
-    resume_kimg             = 0,        # First kimg to report when resuming training.
+    resume_pkl              = None,     # Network pickle to resume vg_training from.
+    resume_kimg             = 0,        # First kimg to report when resuming vg_training.
     cudnn_benchmark         = True,     # Enable torch.backends.cudnn.benchmark?
-    abort_fn                = None,     # Callback function for determining whether to abort training. Must return consistent results across ranks.
-    progress_fn             = None,     # Callback function for updating training progress. Called for all ranks.
+    abort_fn                = None,     # Callback function for determining whether to abort vg_training. Must return consistent results across ranks.
+    progress_fn             = None,     # Callback function for updating vg_training progress. Called for all ranks.
 ):
     # Initialize.
     start_time = time.time()
     device = torch.device('cuda', rank)
     np.random.seed(random_seed * num_gpus + rank)
     torch.manual_seed(random_seed * num_gpus + rank)
-    torch.backends.cudnn.benchmark = cudnn_benchmark    # Improves training speed.
+    torch.backends.cudnn.benchmark = cudnn_benchmark    # Improves vg_training speed.
     torch.backends.cuda.matmul.allow_tf32 = False       # Improves numerical accuracy.
     torch.backends.cudnn.allow_tf32 = False             # Improves numerical accuracy.
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False  # Improves numerical accuracy.
-    conv2d_gradfix.enabled = True                       # Improves training speed. # TODO: ENABLE
+    conv2d_gradfix.enabled = True                       # Improves vg_training speed. # TODO: ENABLE
     grid_sample_gradfix.enabled = False                  # Avoids errors with the augmentation pipe.
     metric_st_kwargs = copy.deepcopy(training_set_kwargs)
     metric_st_kwargs['return_video'] = False
 
-    # Load training set.
+    # Load vg_training set.
     if rank == 0:
-        print('Loading training set...')
+        print('Loading vg_training set...')
     # import ipdb; ipdb.set_trace()
-    training_set = dnnlib.util.construct_class_by_name(**training_set_kwargs)  # subclass of training.dataset.Dataset
+    training_set = dnnlib.util.construct_class_by_name(**training_set_kwargs)  # subclass of vg_training.dataset.Dataset
     training_set_sampler = misc.InfiniteSampler(dataset=training_set, rank=rank, num_replicas=num_gpus, seed=random_seed)
     training_set_iterator = iter(torch.utils.data.DataLoader(dataset=training_set, sampler=training_set_sampler,
                                                              batch_size=batch_size//num_gpus, **data_loader_kwargs,
@@ -274,10 +274,10 @@ def training_loop(
     #             print(next(module.parameters()))
     #             break
 
-    # Setup training phases.
+    # Setup vg_training phases.
     if rank == 0:
-        print('Setting up training phases...')
-    loss = dnnlib.util.construct_class_by_name(device=device, G=G, D=discriminator, augment_pipe=augment_pipe, **loss_kwargs) # subclass of training.loss.Loss
+        print('Setting up vg_training phases...')
+    loss = dnnlib.util.construct_class_by_name(device=device, G=G, D=discriminator, augment_pipe=augment_pipe, **loss_kwargs) # subclass of vg_training.loss.Loss
     phases = []
     for name, module, opt_kwargs, reg_interval in [('G', G, G_opt_kwargs, G_reg_interval), ('D', discriminator, D_opt_kwargs, D_reg_interval)]:
         if reg_interval is None:
@@ -290,7 +290,7 @@ def training_loop(
             opt_kwargs.betas = [beta ** mb_ratio for beta in opt_kwargs.betas]
             if name == 'G':
                 if hasattr(getattr(module.backbone, 'generator', None), 'head_layer_names'):
-                    # training additional layer on top of stem. Freeze stem weights
+                    # vg_training additional layer on top of stem. Freeze stem weights
                     backbone_params = []
                     for g_layer_name in module.backbone.synthesis.layer_names:
                         if g_layer_name in module.backbone.generator.head_layer_names:
@@ -386,7 +386,7 @@ def training_loop(
         # print('Intit diff check')
         # misc.check_ddp_consistency(module, ignore_regex=r'.*\.[^.]+_(avg|ema)')
 
-        # Fetch training data.
+        # Fetch vg_training data.
         with torch.autograd.profiler.record_function('data_fetch'):
             phase_real_img, phase_peep_vid_real, phase_real_c = next(training_set_iterator)
             phase_real_img = (phase_real_img.to(device).to(torch.float32) / 127.5 - 1).split(batch_gpu)
@@ -398,7 +398,7 @@ def training_loop(
             all_gen_c = torch.from_numpy(np.stack(all_gen_c)).pin_memory().to(device)
             all_gen_c = [phase_gen_c.split(batch_gpu) for phase_gen_c in all_gen_c.split(batch_size)]
 
-        # Execute training phases.
+        # Execute vg_training phases.
         for phase, phase_gen_z, phase_gen_c in zip(phases, all_gen_z, all_gen_c):
             if batch_idx % phase.interval != 0:
                 continue

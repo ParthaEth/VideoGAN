@@ -144,7 +144,7 @@ class Conv2dLayerDepthwise(torch.nn.Module):
         resample_filter = [1,3,3,1],    # Low-pass filter to apply when resampling activations.
         conv_clamp      = None,         # Clamp the output to +-X, None = disable clamping.
         channels_last   = False,        # Expect the input to have memory_format=channels_last?
-        trainable       = True,         # Update the weights of this layer during training?
+        trainable       = True,         # Update the weights of this layer during vg_training?
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -202,7 +202,7 @@ class Conv2dLayer(torch.nn.Module):
         resample_filter = [1,3,3,1],    # Low-pass filter to apply when resampling activations.
         conv_clamp      = None,         # Clamp the output to +-X, None = disable clamping.
         channels_last   = False,        # Expect the input to have memory_format=channels_last?
-        trainable       = True,         # Update the weights of this layer during training?
+        trainable       = True,         # Update the weights of this layer during vg_training?
         lr_multiplier=1,
     ):
         super().__init__()
@@ -261,7 +261,7 @@ class MappingNetwork(torch.nn.Module):
         layer_features  = None,     # Number of intermediate features in the mapping layers, None = same as w_dim.
         activation      = 'lrelu',  # Activation function: 'relu', 'lrelu', etc.
         lr_multiplier   = 0.01,     # Learning rate multiplier for the mapping layers.
-        w_avg_beta      = 0.998,    # Decay for tracking the moving average of W during training, None = do not track.
+        w_avg_beta      = 0.998,    # Decay for tracking the moving average of W during vg_training, None = do not track.
     ):
         super().__init__()
         self.z_dim = z_dim
@@ -445,7 +445,7 @@ class SynthesisBlock(torch.nn.Module):
         conv_clamp              = 256,          # Clamp the output of convolution layers to +-X, None = disable clamping.
         use_fp16                = False,        # Use FP16 for this block?
         fp16_channels_last      = False,        # Use channels-last memory format with FP16?
-        fused_modconv_default   = True,         # Default value of fused_modconv. 'inference_only' = True for inference, False for training.
+        fused_modconv_default   = True,         # Default value of fused_modconv. 'inference_only' = True for inference, False for vg_training.
         up                      = 2,
         activation              = 'lrelu',
         **layer_kwargs,                         # Arguments for SynthesisLayer.

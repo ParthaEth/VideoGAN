@@ -503,7 +503,7 @@ class MappingNetwork(torch.nn.Module):
         num_layers: int = 2,          # Number of mapping layers.
         activation: str = 'lrelu',    # Activation function: 'relu', 'lrelu', etc.
         lr_multiplier: float = 0.01,  # Learning rate multiplier for the mapping layers.
-        x_avg_beta: float = 0.995,    # Decay for tracking the moving average of W during training.
+        x_avg_beta: float = 0.995,    # Decay for tracking the moving average of W during vg_training.
     ):
         super().__init__()
         self.z_dim = z_dim

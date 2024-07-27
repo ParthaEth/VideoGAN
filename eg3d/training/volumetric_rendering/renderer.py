@@ -315,7 +315,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
             # import ipdb; ipdb.set_trace()
             assert(torch.all(-0.01 <= c[:, 3]) and torch.all(c[:, 3] <= 1.01))
             axis_t = c[:, 3] * 2 - 1
-            # if not self.training:
+            # if not self.vg_training:
             #     assert (torch.all(c[:, 1] < 0.05) and torch.all(c[:, 1] > -0.05))
         else:
             axis_t = torch.zeros(batch_size, dtype=torch.float32, device=device) - 1
@@ -340,7 +340,7 @@ class AxisAligndProjectionRenderer(BaseRenderer):
                 # print(f't: {axis_t}')
             else:
                 raise ValueError(f'Constant axis index must be between 0 and 2 got {int(c[0, 0])}')
-            # if self.training and self.return_video:  # In eval mode we sample pixel with random but constant time label
+            # if self.vg_training and self.return_video:  # In eval mode we sample pixel with random but constant time label
             #     random.shuffle(coordinates)
                 # print('In render.py. Shuffling the axes')
 

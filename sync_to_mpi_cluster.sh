@@ -10,11 +10,6 @@ while inotifywait -r --exclude '/\.' ../$dir_to_sync/*; do
     sleep 2
     echo "second sync."
     rsync --exclude=".*" -av ../$dir_to_sync/ /is/cluster/$usr/repos/$dest_dir/$dir_to_sync
-  elif [ "$host_machine" = "pghosh-Home" ]; then
-    rsync --exclude=".*" -av ../$dir_to_sync/ /home/pghosh/mnt/cluster/pghosh/repos/$dest_dir/$dir_to_sync &
-    sleep 2
-    echo "second sync."
-    rsync --exclude=".*" -av ../$dir_to_sync/ /home/pghosh/mnt/cluster/pghosh/repos/$dest_dir/$dir_to_sync
   else
     rsync --exclude=".*" -azhe "ssh -i ~/.ssh/id_rsa" ../$dir_to_sync/ $usr@brown.is.localnet:/is/cluster/$usr/repos/$dest_dir/$dir_to_sync &
     sleep 2
