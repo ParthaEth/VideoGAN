@@ -207,8 +207,15 @@ class VideoFolderDataset(Dataset):
         time_steps = 32,        # how many time steps of the video to take
         blur_sigma=0,
         apply_crop=False,
+        load_n_consecutive_random_offset=None,
+        subsample_factor=1,
         **super_kwargs,         # Additional arguments for the Dataset base class.
     ):
+        if load_n_consecutive_random_offset is not None:
+            print('Warning: load_n_consecutive_random_offset is not used in VideoFolderDataset')
+        if subsample_factor != 1:
+            print('Subsamplefactor other than 1 is not supported in VideoFolderDataset')
+            raise NotImplementedError
         self.apply_crop = apply_crop
         self.time_steps = time_steps
         self._path = path

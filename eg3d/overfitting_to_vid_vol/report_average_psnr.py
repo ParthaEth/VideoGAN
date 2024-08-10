@@ -24,13 +24,14 @@ def print_latex_lines(result_dict):
 
 
 # root_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/interpolate'
-root_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/extrapolate'
+root_dir = '/is/cluster/fast/pghosh/ouputs/video_gan_runs/single_vid_over_fitting/webvid-flowers/interpolate'
 result_dict = {}
 data_set_2_file_name_start = {'UCF': ['clips_test', 'clips_train'],
                               'FASHION': ['fasion_video', ],
                               'FFHQ_10M': ['ffhq_X_10_good_motions', ],
                               'FFHQ_ALL': ['ffhq_X_celebv_hq', ],
-                              'SKY_TIMELAPSE': ['train_clips', ]}
+                              'SKY_TIMELAPSE': ['train_clips', ],
+                              'WEBVID_FLOWERS': ['flower_train_vids', ]}
 
 
 def get_dataset_name(file_name):
